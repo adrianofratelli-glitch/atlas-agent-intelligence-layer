@@ -1,0 +1,179 @@
+{
+  "summary": {
+    "mode": "data",
+    "database": "POC_test",
+    "concurrent_users": 10,
+    "turns_per_user": 3,
+    "total_turns": 30,
+    "succeeded": 30,
+    "failed": 0,
+    "wall_seconds": 22.76,
+    "throughput_turns_per_second": 1.32,
+    "latency": {
+      "p50_ms": 4594.1,
+      "p95_ms": 12904.9,
+      "p99_ms": 13481.0,
+      "max_ms": 13481.0
+    },
+    "mean_ms": 6368.0,
+    "pool": {
+      "max": 50,
+      "min": 5,
+      "timeout_ms": 15.0
+    },
+    "errors": [],
+    "measurement_scope": "modo 'data' mede a camada de dados do turno (guardrail, cache, memória híbrida, sessão) sem LLM nem MCP; 'full' inclui os dois"
+  },
+  "rows": [
+    {
+      "ms": 7046.222000004491,
+      "area": "logistica",
+      "blocked": false
+    },
+    {
+      "ms": 7461.519084012252,
+      "area": "financeiro",
+      "blocked": true
+    },
+    {
+      "ms": 8814.952250002534,
+      "area": "vendas",
+      "blocked": false
+    },
+    {
+      "ms": 9384.807291993639,
+      "area": "default",
+      "blocked": false
+    },
+    {
+      "ms": 9876.62999999884,
+      "area": "default",
+      "blocked": false
+    },
+    {
+      "ms": 10671.970875002444,
+      "area": "vendas",
+      "blocked": true
+    },
+    {
+      "ms": 11490.214792007464,
+      "area": "logistica",
+      "blocked": false
+    },
+    {
+      "ms": 4062.8894999972545,
+      "area": "financeiro",
+      "blocked": false
+    },
+    {
+      "ms": 11579.252416995587,
+      "area": "financeiro",
+      "blocked": false
+    },
+    {
+      "ms": 4552.613541993196,
+      "area": "logistica",
+      "blocked": false
+    },
+    {
+      "ms": 12904.927999989013,
+      "area": "vendas",
+      "blocked": false
+    },
+    {
+      "ms": 4553.337708013714,
+      "area": "vendas",
+      "blocked": true
+    },
+    {
+      "ms": 13480.963499998325,
+      "area": "default",
+      "blocked": false
+    },
+    {
+      "ms": 4621.0229999996955,
+      "area": "default",
+      "blocked": true
+    },
+    {
+      "ms": 4622.397042010562,
+      "area": "default",
+      "blocked": false
+    },
+    {
+      "ms": 4433.751167001901,
+      "area": "vendas",
+      "blocked": false
+    },
+    {
+      "ms": 4197.311666997848,
+      "area": "financeiro",
+      "blocked": false
+    },
+    {
+      "ms": 4258.420833008131,
+      "area": "logistica",
+      "blocked": false
+    },
+    {
+      "ms": 4224.154666007962,
+      "area": "logistica",
+      "blocked": false
+    },
+    {
+      "ms": 4344.678666995605,
+      "area": "financeiro",
+      "blocked": false
+    },
+    {
+      "ms": 4634.849333000602,
+      "area": "vendas",
+      "blocked": false
+    },
+    {
+      "ms": 4228.538708994165,
+      "area": "vendas",
+      "blocked": false
+    },
+    {
+      "ms": 4215.419250002014,
+      "area": "default",
+      "blocked": false
+    },
+    {
+      "ms": 4644.878541992512,
+      "area": "default",
+      "blocked": false
+    },
+    {
+      "ms": 4576.260208996246,
+      "area": "default",
+      "blocked": true
+    },
+    {
+      "ms": 4491.351457996643,
+      "area": "vendas",
+      "blocked": false
+    },
+    {
+      "ms": 3967.3112080054125,
+      "area": "financeiro",
+      "blocked": false
+    },
+    {
+      "ms": 4604.032167000696,
+      "area": "logistica",
+      "blocked": false
+    },
+    {
+      "ms": 4594.058582995785,
+      "area": "vendas",
+      "blocked": true
+    },
+    {
+      "ms": 4502.647834000527,
+      "area": "default",
+      "blocked": false
+    }
+  ]
+}

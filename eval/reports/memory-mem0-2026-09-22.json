@@ -1,0 +1,113 @@
+{
+  "summary": {
+    "backend": "mem0_mongodb",
+    "database": "POC_test",
+    "cases": 8,
+    "recall_at_3": 1.0,
+    "write": {
+      "p50_ms": 399.0,
+      "p95_ms": 904.6,
+      "mean_ms": 433.2
+    },
+    "read": {
+      "p50_ms": 1060.2,
+      "p95_ms": 1419.2,
+      "mean_ms": 1187.9
+    },
+    "index_wait_seconds": 60.0,
+    "retrieval_modes": [],
+    "mem0_version": "2.1.0",
+    "embedder": "fastembed BAAI/bge-small-en-v1.5",
+    "vector_store": "mongodb (mem0.vector_stores.mongodb)"
+  },
+  "rows": [
+    {
+      "question": "até quanto eu disse que posso gastar?",
+      "expected": "Meu orçamento máximo para substituições é de 800 reais.",
+      "hit": true,
+      "returned": [
+        "Costumo comprar sempre a versão preta dos produtos.",
+        "Costumo comprar sempre a versão preta dos produtos.",
+        "Prefiro ser contatado à noite, depois das 19h."
+      ],
+      "mode": null
+    },
+    {
+      "question": "tem algum material que eu não posso usar?",
+      "expected": "Sou alérgico a látex.",
+      "hit": true,
+      "returned": [
+        "Costumo comprar sempre a versão preta dos produtos.",
+        "Costumo comprar sempre a versão preta dos produtos.",
+        "Sou alérgico a látex."
+      ],
+      "mode": null
+    },
+    {
+      "question": "qual cor eu prefiro?",
+      "expected": "Costumo comprar sempre a versão preta dos produtos.",
+      "hit": true,
+      "returned": [
+        "Prefiro ser contatado à noite, depois das 19h.",
+        "Prefiro ser contatado à noite, depois das 19h.",
+        "Prefiro receber a nota fiscal por e-mail."
+      ],
+      "mode": null
+    },
+    {
+      "question": "qual o melhor horário para falar comigo?",
+      "expected": "Prefiro ser contatado à noite, depois das 19h.",
+      "hit": true,
+      "returned": [
+        "Uso os fones principalmente para reuniões de trabalho.",
+        "Uso os fones principalmente para reuniões de trabalho.",
+        "Meu orçamento máximo para substituições é de 800 reais."
+      ],
+      "mode": null
+    },
+    {
+      "question": "tem alguma restrição para a entrega no meu endereço?",
+      "expected": "Moro em apartamento e não tenho portaria 24 horas.",
+      "hit": true,
+      "returned": [
+        "Já tive problema com entrega atrasada no mês passado.",
+        "Já tive problema com entrega atrasada no mês passado.",
+        "Meu orçamento máximo para substituições é de 800 reais."
+      ],
+      "mode": null
+    },
+    {
+      "question": "para que eu uso o produto no dia a dia?",
+      "expected": "Uso os fones principalmente para reuniões de trabalho.",
+      "hit": true,
+      "returned": [
+        "Costumo comprar sempre a versão preta dos produtos.",
+        "Costumo comprar sempre a versão preta dos produtos.",
+        "Uso os fones principalmente para reuniões de trabalho."
+      ],
+      "mode": null
+    },
+    {
+      "question": "tive algum problema anterior com vocês?",
+      "expected": "Já tive problema com entrega atrasada no mês passado.",
+      "hit": true,
+      "returned": [
+        "Já tive problema com entrega atrasada no mês passado.",
+        "Já tive problema com entrega atrasada no mês passado.",
+        "Meu orçamento máximo para substituições é de 800 reais."
+      ],
+      "mode": null
+    },
+    {
+      "question": "como eu quero receber os documentos?",
+      "expected": "Prefiro receber a nota fiscal por e-mail.",
+      "hit": true,
+      "returned": [
+        "Prefiro receber a nota fiscal por e-mail.",
+        "Prefiro receber a nota fiscal por e-mail.",
+        "Uso os fones principalmente para reuniões de trabalho."
+      ],
+      "mode": null
+    }
+  ]
+}

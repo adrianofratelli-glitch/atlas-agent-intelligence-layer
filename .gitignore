@@ -1,0 +1,34 @@
+# credenciais — NUNCA commitar
+.env
+.env.bak
+.env.*.bak
+
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# node
+node_modules/
+dist/
+
+# misc
+.DS_Store
+
+# material interno de apresentação — nunca publicar
+*.pdf
+docs/pov-onepager*
+tmp/
+output/
+
+# playwright
+test-results/
+playwright-report/
+
+# venvs auxiliares (dependências pesadas fora do venv do PoV)
+.venv-eval/
+.venv-memory/

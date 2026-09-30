@@ -1,0 +1,12 @@
+{
+  "name": "intelligence-layer-poc",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test:visual": "playwright test",
+    "test:visual:update": "playwright test --update-snapshots"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}

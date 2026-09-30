@@ -110,3 +110,7 @@ The full argument, with measured numbers, is in [docs/memoria-agentica-mongodb.m
 The denylist compares the embedding of the whole message with those of the forbidden phrases. A forbidden phrase combined with a **second, unrelated intent** drops from 0.9284 to **0.6799** similarity and stops blocking, even below legitimate domain questions (0.7330–0.7680). No threshold adjustment fixes this without turning legitimate customers into blocks. It is a limit of the single-phrase-embedding pattern, not poor calibration; fixing it requires sub-intent decomposition or an additional classification layer.
 
 In practice the turn does not leak data: the policy rewrite denies broad reads on the server and the client receives guidance. The denylist is one layer, not the only one. Measurements and root cause in [docs/eval-report.md](docs/eval-report.md) (Portuguese).
+
+## License
+
+MIT, see [LICENSE](LICENSE).

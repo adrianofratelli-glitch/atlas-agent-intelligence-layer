@@ -68,20 +68,6 @@ export default function ModelSwap({ state, setState }) {
     api.models().then((r) => setCatalog(r.models || [])).catch(() => {});
   }, []);
 
-  const swap = async () => {
-    setSwapping(true);
-    setError(null);
-    try {
-      const c = await api.swapModels();
-      setState((s) => ({ ...s, config: c }));
-      setFlash((f) => f + 1);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setSwapping(false);
-    }
-  };
-
   const pick = async (model) => {
     if (swapping || config?.primary?.model === model) return;
     setSwapping(true);
@@ -135,9 +121,6 @@ export default function ModelSwap({ state, setState }) {
             {config && <Badge variant={modelBadge(config.primary?.model)}>{config.primary?.model}</Badge>}
           </div>
           <div className="row" style={{ marginBottom: 12 }}>
-            <Button darkMode variant="primary" onClick={swap} disabled={swapping || !config}>
-              {swapping ? 'update_one no Atlas…' : 'Trocar primary: Sonnet ↔ Haiku'}
-            </Button>
             <span className="dim">zero restart · zero deploy</span>
           </div>
           {catalog.length > 0 && (

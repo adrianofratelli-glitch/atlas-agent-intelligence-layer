@@ -12,7 +12,7 @@ This PoV moves that layer into the database. Prompt schemas, model configuration
 
 ![Prompt templates as polymorphic documents, updated live](docs/img/tab1-schema-flexivel.png)
 
-**2. Swapping the production model is one `update_one`.** `model_config` is read on every request; Sonnet ↔ Haiku changes latency and cost with zero deploys. The cost panel projects monthly spend from the session's real token counts.
+**2. Swapping the production model is one `update_one`.** `model_config` is read on every request; picking another model from the catalog changes latency and cost with zero deploys. The cost panel projects monthly spend from the session's real token counts.
 
 ![Model swap between Sonnet and Haiku with projected monthly cost](docs/img/tab2-model-swap.png)
 

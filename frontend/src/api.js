@@ -78,7 +78,6 @@ export const api = {
 
   // Tab 2
   getModelConfig: () => request('/api/model-config'),
-  swapModels: () => request('/api/model-config/swap', { method: 'POST' }),
   quickChat: (question, history = [], noCache = false) =>
     request('/api/chat/quick', {
       method: 'POST',

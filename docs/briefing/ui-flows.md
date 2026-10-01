@@ -22,7 +22,7 @@ Mostra o documento **antes e depois** de um `$set` em `ai_brain.prompt_templates
 
 Screenshot: `docs/img/tab2-model-swap.png`.
 
-Faz uma pergunta, mostra o custo. Troca `ai_brain.model_config` com um `update_one` (Sonnet ↔ Haiku), refaz a pergunta — o custo muda, nenhum deploy aconteceu. `backend/llm.py` lê esse documento a cada chamada.
+Faz uma pergunta, mostra o custo. Troca `ai_brain.model_config` com um `update_one` (seletor de modelos do catálogo Grove, `POST /api/model-config/primary`), refaz a pergunta — o custo muda, nenhum deploy aconteceu. `backend/llm.py` lê esse documento a cada chamada.
 
 ### Aba 3 — Agente (`tabs/Agent.jsx`, 976 linhas — a maior do projeto)
 

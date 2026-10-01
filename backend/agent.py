@@ -135,7 +135,7 @@ async def _create_with_retry(client, *, model: str, fallback_model: str | None =
 
 async def _resolve_agent_model(area: str = "default") -> tuple[str, str | None]:
     """(primary, fallback) do ai_brain.model_config ATIVO da área, so the
-    Model Swap tab controls the agent's speed/cost live (Sonnet ↔ Haiku, no deploy)."""
+    Model Swap tab controls the agent's speed/cost live (model picker, no deploy)."""
     try:
         cfg = await get_active_config(area)
         return cfg["primary"]["model"], (cfg.get("fallback") or {}).get("model")

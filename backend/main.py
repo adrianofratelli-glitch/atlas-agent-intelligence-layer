@@ -2,7 +2,7 @@
 
 Tabs:
   1. Flexible schema → /api/templates, /api/templates/{id}/variant
-  2. Model swap      → /api/model-config, /api/model-config/swap, /api/chat/quick
+  2. Model swap      → /api/model-config, /api/model-config/primary, /api/chat/quick
   3. Agent           → /api/agent/scenarios | run  (autonomous loop via MongoDB MCP Server)
 
 A sessão com o MongoDB MCP Server é gerida por um SUPERVISOR em background:
@@ -504,34 +504,6 @@ async def set_primary_model(body: PrimaryBody, request: Request, area: str = "de
             {"_id": cfg["_id"]},
             {"$set": {"primary.model": body.model, "primary.provider": entry["provider"],
                       "updated_at": datetime.now(timezone.utc)}},
-        )
-    )
-    return clean(await get_active_config(area))
-
-
-@app.post("/api/model-config/swap")
-async def swap_models(request: Request, area: str = "default"):
-    """Real update_one: swaps primary ↔ fallback. The backend reads the doc on every request.
-
-    `area` limita o swap ao documento de config daquela área quando existir
-    (fallback: doc global) — a troca deixa de ser cegamente global."""
-    require_admin(request)
-    cfg = await get_active_config(area)
-    if not cfg.get("fallback") or not cfg.get("primary"):
-        raise HTTPException(status_code=400,
-                            detail="Config sem primary/fallback — swap indisponível.")
-    await admin_audit("model_swap", request, area=area,
-                      new_primary=cfg["fallback"].get("model"))
-    await safe_query(
-        ai_brain()["model_config"].update_one(
-            {"_id": cfg["_id"]},
-            {
-                "$set": {
-                    "primary": cfg["fallback"],
-                    "fallback": cfg["primary"],
-                    "updated_at": datetime.now(timezone.utc),
-                }
-            },
         )
     )
     return clean(await get_active_config(area))

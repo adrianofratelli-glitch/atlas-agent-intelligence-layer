@@ -107,6 +107,15 @@ async def lookup(question: str, area: str = "default") -> dict:
                           "score": {"$meta": "vectorSearchScore"}}},
         ]
 
+    # Mesma pergunta (texto normalizado) já respondida: hit direto, sem embedding
+    # nem $vectorSearch — e sem esperar o índice vetorial indexar a entrada nova.
+    try:
+        docs, mode = await _exact_fallback(coll, question, area), "exact-recent"
+    except Exception:  # noqa: BLE001 — o caminho vetorial segue valendo
+        docs = []
+    if docs:
+        return await _finish_exact(coll, docs[0], threshold, t0)
+
     try:
         docs = await aggregate_list(coll, _pipeline(True), length=1, maxTimeMS=MAX_TIME_MS)
         mode = "vector"
@@ -147,6 +156,19 @@ async def lookup(question: str, area: str = "default") -> dict:
                 {"$inc": {"hits": 1}, "$set": {"last_hit_at": _utcnow()}},
             )
         )
+    return result
+
+
+async def _finish_exact(coll, top: dict, threshold: float, t0: float) -> dict:
+    result = {
+        "hit": True, "score": 1.0, "threshold": threshold,
+        "latency_ms": int((time.perf_counter() - t0) * 1000), "mode": "exact-recent",
+        "matched_question": top.get("question"), "matched_area": top.get("area"),
+        "source_id": str(top.get("_id")), "answer": top.get("answer", ""),
+        "model": top.get("model"),
+    }
+    await safe_query(coll.update_one(
+        {"_id": top["_id"]}, {"$inc": {"hits": 1}, "$set": {"last_hit_at": _utcnow()}}))
     return result
 
 

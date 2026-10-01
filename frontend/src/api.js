@@ -79,8 +79,14 @@ export const api = {
   // Tab 2
   getModelConfig: () => request('/api/model-config'),
   swapModels: () => request('/api/model-config/swap', { method: 'POST' }),
-  quickChat: (question, history = []) =>
-    request('/api/chat/quick', { method: 'POST', body: JSON.stringify({ question, history }) }),
+  quickChat: (question, history = [], noCache = false) =>
+    request('/api/chat/quick', {
+      method: 'POST',
+      body: JSON.stringify({ question, history, no_cache: noCache }),
+    }),
+  models: () => request('/api/models'),
+  setPrimaryModel: (model) =>
+    request('/api/model-config/primary', { method: 'POST', body: JSON.stringify({ model }) }),
 
   // Tab 3 — Agent (autonomous loop via MongoDB MCP Server)
   users: () => request('/api/users'),

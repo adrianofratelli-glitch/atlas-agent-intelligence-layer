@@ -13,12 +13,43 @@ from anthropic import AsyncAnthropic, APIConnectionError, APIStatusError
 from anthropic.types import Message
 
 _calls = contextvars.ContextVar('llm_calls', default=None)
-DEFAULT_RATES = {'claude-haiku-4-5': 2.40, 'gpt-5.6-luna': 0.38,
-                 'claude-sonnet-4-5': 1.96, 'claude-sonnet-5': 2.43}
+# USD por 1M tokens (input+output+cache): média OBSERVADA na Grove, tela
+# "Usage & Spend" (2026-10-01). Estimativa de demo, não tarifa de fatura.
+DEFAULT_RATES = {
+    'claude-sonnet-5': 3.13, 'claude-sonnet-4-6': 4.40, 'claude-haiku-4-5': 1.38,
+    'claude-sonnet-4-5': 1.79, 'claude-sonnet-5-5': 7.71, 'claude-opus-4-5': 17.67,
+    'claude-opus-4-8': 15.00, 'claude-opus-5': 11.38, 'claude-opus-5-5': 17.33,
+    'gpt-4.1': 1.16, 'gpt-4.1-mini': 0.69, 'gpt-4o': 4.32, 'gpt-4o-mini': 0.28,
+    'gpt-5': 6.60, 'gpt-5-mini': 1.32, 'gpt-5.1': 4.49, 'gpt-5.2': 5.83,
+    'gpt-5.4': 5.15, 'gpt-5.4-mini': 1.34, 'gpt-5.4-nano': 0.58,
+    'gpt-5.6-luna': 0.30, 'gpt-6-astra': 25.72, 'deepseek-v3.2': 0.97,
+    'Llama-4-Maverick-17B-128E-Instruct-FP8': 0.74, 'grok-4.3': 1.26,
+}
+
+
+# Tarifa de LISTA opcional (USD por 1M tokens, input/output) por modelo, via
+# LLM_LIST_PRICES (JSON {"modelo": [input, output]}). Quando existe para um
+# modelo, vence a média observada. Modelos fora da tabela seguem na blended.
+# Vazio por padrão: a média observada (DEFAULT_RATES) manda. Opt-in via LLM_LIST_PRICES.
+DEFAULT_LIST_PRICES: dict = {}
+
+
+def list_prices():
+    # O override MESCLA com os padrões: acrescentar um modelo no .env não pode
+    # apagar a tarifa dos demais.
+    values = {**DEFAULT_LIST_PRICES, **(json.loads(os.getenv('LLM_LIST_PRICES', 'null')) or {})}
+    for k, v in values.items():
+        if (not isinstance(v, (list, tuple)) or len(v) != 2 or any(
+                isinstance(x, bool) or not isinstance(x, (int, float)) or not math.isfinite(x) or x < 0
+                for x in v)):
+            raise ValueError(f'LLM_LIST_PRICES[{k!r}] requires [input, output] finite nonnegative')
+    return {k: (float(v[0]), float(v[1])) for k, v in values.items()}
 
 
 def rates():
-    values = json.loads(os.getenv('LLM_BLENDED_PRICES', json.dumps(DEFAULT_RATES)))
+    # O env MESCLA com os padrões: um LLM_BLENDED_PRICES antigo/parcial não apaga
+    # a tarifa dos demais modelos.
+    values = {**DEFAULT_RATES, **json.loads(os.getenv('LLM_BLENDED_PRICES', '{}'))}
     if not isinstance(values, dict) or any(isinstance(v, bool) or not isinstance(v, (int, float))
             or not math.isfinite(v) or v < 0 for v in values.values()):
         raise ValueError('LLM_BLENDED_PRICES requires finite nonnegative rates')
@@ -31,7 +62,7 @@ def economics(calls):
     return {'estimated_cost_usd': round(sum(known), 8) if complete else None,
             'known_cost_usd': round(sum(known), 8), 'cost_complete': complete,
             'cost_basis': 'historical_blended_estimate',
-            'measurement_scope': 'Observed Grove average; estimate, not invoice'}
+            'measurement_scope': 'List price when known, else observed Grove average; estimate, not invoice'}
 
 
 def metered_turn(fn):
@@ -56,25 +87,44 @@ def metered_turn(fn):
 
 def checked_url(url):
     parsed = urlparse(url)
-    if parsed.scheme != 'https' or parsed.hostname != 'grove-gateway-prod.azure-api.net' or parsed.username or parsed.password or parsed.query or parsed.fragment:
+    if parsed.scheme != 'https' or not (parsed.hostname or '').endswith('.mongodb.com') or parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise ValueError('Grove endpoint must use the trusted HTTPS gateway')
     return url
 
 
 async def openai_request(body):
-    url = checked_url(os.getenv('GROVE_CHAT_COMPLETIONS_URL',
-        'https://grove-gateway-prod.azure-api.net/grove-foundry-prod/openai/v1/chat/completions'))
+    url = os.getenv('GROVE_CHAT_COMPLETIONS_URL')
+    if not url:
+        raise ValueError('GROVE_CHAT_COMPLETIONS_URL is required for Grove OpenAI-compatible models')
+    url = checked_url(url)
     key = os.getenv('GROVE_API_KEY', '')
     if not key:
         raise ValueError('GROVE_API_KEY is required for Grove OpenAI models')
     async with httpx.AsyncClient(timeout=float(os.getenv('LLM_TIMEOUT_SECONDS', '45')), follow_redirects=False) as client:
-        response = await client.post(url, headers={'api-key': key}, json=body)
+        response = await client.post(url, headers={'Authorization': f'Bearer {key}'}, json=body)
         response.raise_for_status()
         return response.json()
 
 
 def openai_models():
-    return json.loads(os.getenv('GROVE_OPENAI_MODELS', '["gpt-5.6-luna"]'))
+    return json.loads(os.getenv('GROVE_OPENAI_MODELS', '["gpt-4o-mini","gpt-4.1","gpt-5.1","gpt-5.5","gpt-5.6-luna"]'))
+
+
+# Modelos validados no gateway novo (Grove), sondados com a
+# chave real em 2026-10-01. Fora de propósito: gpt-5.5/gpt-5.6-*/gpt-6-* (só
+# respondem pela Responses API, não por chat/completions) e gpt-5/gpt-5-mini
+# (gastam o orçamento de tokens em raciocínio e voltam incompletos).
+CATALOG = ['claude-haiku-4-5', 'claude-sonnet-4-5', 'claude-sonnet-5-5', 'claude-opus-4-5',
+           'gpt-4o-mini', 'gpt-4.1', 'gpt-5.4-mini', 'gpt-5.4', 'grok-4.3', 'deepseek-v3.2']
+
+
+def is_claude(model):
+    return model.startswith('claude-')
+
+
+def model_catalog():
+    return [{'model': m, 'provider': 'anthropic' if is_claude(m) else 'openai',
+             'priced': m in list_prices() or m in rates()} for m in CATALOG]
 
 
 def new_record(model, role, fallback=False):
@@ -94,10 +144,17 @@ def finish_record(record, started, usage=None, openai=False):
             inp = max(0, u[ik] - cached) if openai else u[ik]
             record.update(input_tokens=inp, output_tokens=u[ok], cache_read_tokens=cached,
                           cache_write_tokens=write, usage_known=True)
-            rate = rates().get(record['model'])
-            record['blended_rate_usd_per_mtok'] = rate
-            if rate is not None:
-                record['estimated_cost_usd'] = round((inp + u[ok] + cached + write) * rate / 1e6, 10)
+            listed = list_prices().get(record['model'])
+            if listed is not None:
+                pin, pout = listed
+                record['list_price_usd_per_mtok'] = {'input': pin, 'output': pout}
+                record['estimated_cost_usd'] = round(
+                    (inp * pin + u[ok] * pout + cached * pin * 0.1 + write * pin * 1.25) / 1e6, 10)
+            else:
+                rate = rates().get(record['model'])
+                record['blended_rate_usd_per_mtok'] = rate
+                if rate is not None:
+                    record['estimated_cost_usd'] = round((inp + u[ok] + cached + write) * rate / 1e6, 10)
     ledger = _calls.get()
     if ledger is not None:
         ledger.append(record)
@@ -139,18 +196,21 @@ class GatewayClient:
         self.role = role
         self.messages = self
         key = os.getenv('GROVE_API_KEY')
-        base = (os.getenv('GROVE_ANTHROPIC_BASE_URL') or 'https://grove-gateway-prod.azure-api.net/grove-foundry-prod/anthropic') if key else os.getenv('ANTHROPIC_BASE_URL')
+        base = (os.getenv('GROVE_ANTHROPIC_BASE_URL') or os.getenv('GROVE_BASE_URL')) if key else os.getenv('ANTHROPIC_BASE_URL')
+        if key and not base:
+            # Falha fechado: sem base o SDK mandaria a chave Grove para api.anthropic.com.
+            raise ValueError('GROVE_ANTHROPIC_BASE_URL is required when GROVE_API_KEY is set')
         kwargs = {}
         if base:
             checked_url(base)
-            kwargs = {'base_url': base, 'default_headers': {'api-key': key or os.getenv('ANTHROPIC_API_KEY', '')}}
+            kwargs = {'base_url': base, 'default_headers': {'Authorization': f"Bearer {key or os.getenv('ANTHROPIC_API_KEY', '')}"}}
         self.native = AsyncAnthropic(api_key=key or os.getenv('ANTHROPIC_API_KEY') or 'not-configured',
                                     max_retries=0, timeout=45, **kwargs)
 
     async def create(self, *, model, **kwargs):
         fallback = kwargs.pop('_fallback', False)
         record, started, usage = new_record(model, self.role, fallback), time.perf_counter(), None
-        is_openai = model in openai_models()
+        is_openai = not is_claude(model)
         try:
             if not is_openai:
                 response = await self.native.messages.create(model=model, **kwargs)

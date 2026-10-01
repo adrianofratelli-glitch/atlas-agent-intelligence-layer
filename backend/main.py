@@ -54,6 +54,7 @@ from agent import (
     warm_up_session,
 )
 from db import MAX_TIME_MS, SESSION_IDLE_SECONDS, SafeQueryError, ai_brain, get_client, poc, safe_query
+import gateway
 from llm import call_with_fallback, get_active_config
 
 observability.setup_logging()
@@ -476,6 +477,38 @@ async def model_config():
     return clean(await get_active_config())
 
 
+class PrimaryBody(BaseModel):
+    # Valor (não caminho de update): ponto é permitido (gpt-4.1). A pertença ao
+    # catálogo é a checagem real.
+    model: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$")
+
+
+@app.get("/api/models")
+async def available_models():
+    """Catálogo de modelos selecionáveis na demo (Claude + OpenAI via Grove)."""
+    return {"models": gateway.model_catalog()}
+
+
+@app.post("/api/model-config/primary")
+async def set_primary_model(body: PrimaryBody, request: Request, area: str = "default"):
+    """update_one do primary.model — qualquer modelo do catálogo, sem deploy.
+    O provider vem do catálogo (nunca do payload)."""
+    require_admin(request)
+    entry = next((m for m in gateway.model_catalog() if m["model"] == body.model), None)
+    if not entry:
+        raise HTTPException(status_code=422, detail="Modelo fora do catálogo.")
+    cfg = await get_active_config(area)
+    await admin_audit("model_set_primary", request, area=area, new_primary=body.model)
+    await safe_query(
+        ai_brain()["model_config"].update_one(
+            {"_id": cfg["_id"]},
+            {"$set": {"primary.model": body.model, "primary.provider": entry["provider"],
+                      "updated_at": datetime.now(timezone.utc)}},
+        )
+    )
+    return clean(await get_active_config(area))
+
+
 @app.post("/api/model-config/swap")
 async def swap_models(request: Request, area: str = "default"):
     """Real update_one: swaps primary ↔ fallback. The backend reads the doc on every request.
@@ -518,6 +551,9 @@ class QuickChatBody(BaseModel):
     # Turnos anteriores da sessão do mini-chat (o estado vive no navegador).
     history: list[QuickChatTurn] = Field(default_factory=list, max_length=40)
     user_key: str | None = Field(default=None, max_length=128)
+    # Comparar modelos: ignora o cache (nem lê nem grava), para a mesma pergunta
+    # chegar ao modelo configurado em vez de ser servida pela resposta de outro.
+    no_cache: bool = False
 
 
 async def _quick_chat_history(turns: list[QuickChatTurn], area: str) -> list[dict]:
@@ -585,7 +621,8 @@ async def quick_chat(body: QuickChatBody, request: Request):
     # → serve do MongoDB sem tocar o LLM. Área do usuário escopa a visibilidade.
     # Pergunta pessoal ou sobre a própria conversa depende de quem/quando pergunta:
     # não lê nem grava o cache compartilhado (mesmo gate do agente; falha fechado).
-    bypass_cache = memory.should_extract(masked) or memory.references_conversation(masked)
+    bypass_cache = (body.no_cache or memory.should_extract(masked)
+                    or memory.references_conversation(masked))
     if not bypass_cache:
         bypass_cache = (await turn_classifier.classify(masked))["personal"]
     cached = {"hit": False, "bypass": True} if bypass_cache else await cache.lookup(masked, area=area)

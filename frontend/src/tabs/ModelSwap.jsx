@@ -6,7 +6,11 @@ import TextInput from '@leafygreen-ui/text-input';
 import JsonViewer from '../components/JsonViewer.jsx';
 import { api } from '../api.js';
 
-const modelBadge = (model) => (model?.includes('sonnet') ? 'blue' : 'yellow');
+const modelBadge = (model) => {
+  if (model?.startsWith('gpt')) return 'green';
+  if (model?.includes('opus')) return 'purple';
+  return model?.includes('sonnet') ? 'blue' : 'yellow';
+};
 
 // Cost comes from the measured provider ledger, including fallback attempts.
 function costStats(messages) {
@@ -36,6 +40,8 @@ export default function ModelSwap({ state, setState }) {
   const [error, setError] = useState(null);
   const [flash, setFlash] = useState(0);
   const [savings, setSavings] = useState(null);
+  const [catalog, setCatalog] = useState([]);
+  const [noCache, setNoCache] = useState(false);
 
   const loadSavings = async () => {
     try {
@@ -59,6 +65,7 @@ export default function ModelSwap({ state, setState }) {
   useEffect(() => {
     if (!config) loadConfig();
     loadSavings();
+    api.models().then((r) => setCatalog(r.models || [])).catch(() => {});
   }, []);
 
   const swap = async () => {
@@ -75,25 +82,32 @@ export default function ModelSwap({ state, setState }) {
     }
   };
 
+  const pick = async (model) => {
+    if (swapping || config?.primary?.model === model) return;
+    setSwapping(true);
+    setError(null);
+    try {
+      const c = await api.setPrimaryModel(model);
+      setState((s) => ({ ...s, config: c }));
+      setFlash((f) => f + 1);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSwapping(false);
+    }
+  };
+
   const ask = async () => {
     if (!question.trim() || busy) return;
     const q = question.trim();
-    // histórico da sessão do mini-chat; turnos bloqueados pelo guardrail ficam de fora
-    const history = [];
-    state.messages.forEach((m, i) => {
-      if (m.role === 'assistant' && m.meta?.route === 'blocked') {
-        history.pop();
-        return;
-      }
-      if (i === state.messages.length - 1 && m.role === 'user') return;
-      history.push({ role: m.role, text: m.text });
-    });
+    // Cada pergunta é independente (sem histórico): a comparação de modelo e
+    // custo fica justa, e o input de tokens não cresce a cada turno.
     setBusy(true);
     setError(null);
     setState((s) => ({ ...s, messages: [...s.messages, { role: 'user', text: q }] }));
     setQuestion('');
     try {
-      const r = await api.quickChat(q, history.slice(-10));
+      const r = await api.quickChat(q, [], noCache);
       setState((s) => ({
         ...s,
         messages: [...s.messages, { role: 'assistant', text: r.text, meta: r }],
@@ -126,9 +140,26 @@ export default function ModelSwap({ state, setState }) {
             </Button>
             <span className="dim">zero restart · zero deploy</span>
           </div>
+          {catalog.length > 0 && (
+            <div className="row" style={{ marginBottom: 12, flexWrap: 'wrap', gap: 6 }}>
+              {catalog.map((m) => (
+                <Button
+                  key={m.model}
+                  darkMode
+                  size="xsmall"
+                  variant={config?.primary?.model === m.model ? 'primary' : 'default'}
+                  onClick={() => pick(m.model)}
+                  disabled={swapping || !config}
+                >
+                  {m.model}
+                </Button>
+              ))}
+            </div>
+          )}
           <p className="dim" style={{ marginTop: 0, marginBottom: 12, fontSize: '0.8rem' }}>
-            Este mesmo documento controla o <strong>agente da aba 03</strong>: trocar para
-            Haiku aqui deixa o agente ~40% mais rápido, ao vivo.
+            Este mesmo documento controla o <strong>agente da aba 03</strong>: trocar o
+            primary aqui (Claude ou OpenAI, via Grove) muda o agente ao vivo — um
+            <code> update_one</code>, sem deploy.
           </p>
           {config ? (
             <JsonViewer doc={config} flashKey={flash} />
@@ -144,8 +175,8 @@ export default function ModelSwap({ state, setState }) {
           <div className="chat-box" style={{ minHeight: 220 }}>
             {messages.length === 0 && (
               <div className="dim">
-                Pergunte algo, troque o primary no documento e repita a mesma pergunta — o
-                badge do modelo muda sem reiniciar nada.
+                Cada pergunta é independente (sem contexto). Troque o primary no documento e repita a
+                pergunta com "Comparar modelos" ligado — o badge muda sem reiniciar nada.
               </div>
             )}
             {messages.map((m, i) => (
@@ -181,6 +212,10 @@ export default function ModelSwap({ state, setState }) {
               Enviar
             </Button>
           </div>
+          <label className="dim" style={{ display: 'block', marginTop: 8, fontSize: '0.8rem' }}>
+            <input type="checkbox" checked={noCache} onChange={(e) => setNoCache(e.target.checked)} />
+            {' '}Comparar modelos (ignora o cache semântico)
+          </label>
         </div>
       </div>
 
@@ -221,7 +256,7 @@ export default function ModelSwap({ state, setState }) {
             {costStats(messages).map((s) => (
               <div className="cost-item" key={s.family}>
                 <div className="row" style={{ marginBottom: 4 }}>
-                  <Badge variant={s.family === 'sonnet' ? 'blue' : 'yellow'}>
+                  <Badge variant={modelBadge(s.family)}>
                     {s.family}
                   </Badge>
                   <span className="dim mono">{s.n} respostas · ~{s.avgLatency} ms</span>

@@ -1,23 +1,23 @@
 :root {
-  --bg-primary: #001e2b;
-  --bg-secondary: #112733;
-  --bg-card: #1c2d38;
-  --bg-card-hover: #263c49;
-  --border-subtle: #3d4f58;
+  --bg-primary: #061621;
+  --bg-secondary: #001e2b;
+  --bg-card: #0a2633;
+  --bg-card-hover: #10303f;
+  --border-subtle: #2a424d;
   --border-accent: rgba(0, 237, 100, 0.25);
-  --text-pri: #e8edeb;
-  --text-sec: #c1c7c6;
-  --text-muted: #889397;
+  --text-pri: #fdfff5;
+  --text-sec: #cdd5ce;
+  --text-muted: #9ea2a1;
   --accent: #00ed64;
   --accent-glow: rgba(0, 237, 100, 0.1);
-  --link: #0498ec;
-  --purple: #b45af2;
-  --orange: #ffc010;
-  --cyan: #0498ec;
+  --link: #3d9dff;
+  --purple: #d959ea;
+  --orange: #ffad00;
+  --cyan: #3d9dff;
   --teal: #00a35c;
   --danger: #ff6960;
-  --font-sans: 'Outfit', 'Helvetica Neue', Arial, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: 'Special Gothic', 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'Source Code Pro', ui-monospace, SFMono-Regular, Menlo, monospace;
   color-scheme: dark;
 
   /* legacy aliases used by the tabs */
@@ -134,7 +134,7 @@ nav.top-nav {
 .nav-pill {
   font-size: 0.72rem;
   font-weight: 600;
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   padding: 0.25rem 0.7rem;
   border-radius: 20px;
   cursor: pointer;
@@ -157,7 +157,7 @@ nav.top-nav {
 }
 
 .status-pill {
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   font-size: 0.62rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -199,7 +199,7 @@ nav.top-nav {
 }
 
 .hero-kicker {
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   font-size: 0.7rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -278,7 +278,7 @@ nav.top-nav {
   font-size: 1.5rem;
   font-weight: 800;
   color: var(--text-pri);
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   letter-spacing: -0.03em;
   line-height: 1.2;
 }
@@ -291,7 +291,7 @@ nav.top-nav {
   font-size: 0.65rem;
   color: var(--text-muted);
   margin-top: 0.35rem;
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -466,7 +466,7 @@ nav.top-nav {
   justify-content: center;
   flex-shrink: 0;
   font-size: 13px;
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   border: 1px solid var(--border-subtle);
   color: var(--text-muted);
 }
@@ -537,7 +537,7 @@ footer.app-footer {
 footer.app-footer p {
   font-size: 0.8rem;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
 }
 
 /* ---------- retrieval funnel (Tab 4) ---------- */
@@ -551,7 +551,7 @@ footer.app-footer p {
 
 .funnel-label {
   width: 190px;
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   font-size: 0.68rem;
   color: var(--text-muted);
   text-align: right;
@@ -568,7 +568,7 @@ footer.app-footer p {
 }
 
 .funnel-count {
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--accent);
@@ -585,7 +585,7 @@ footer.app-footer p {
 }
 
 .cost-reveal-title {
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   font-size: 0.65rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -601,7 +601,7 @@ footer.app-footer p {
 }
 
 .cost-item .cost-val {
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--text-pri);
@@ -610,7 +610,7 @@ footer.app-footer p {
 .cost-item .cost-label {
   font-size: 0.65rem;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -652,7 +652,7 @@ footer.app-footer p {
 .flow-node .flow-check {
   opacity: 0;
   transition: opacity 0.3s;
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
 }
 
 .flow-node.active-mdb {
@@ -693,7 +693,7 @@ footer.app-footer p {
 
 .flow-total {
   margin-top: 6px;
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   font-size: 0.85rem;
   font-weight: 700;
   opacity: 0;
@@ -769,7 +769,7 @@ footer.app-footer p {
 .phase-sub {
   font-size: 0.6rem;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   text-transform: uppercase;
   letter-spacing: 0.04em;
   margin-top: 2px;
@@ -873,7 +873,7 @@ footer.app-footer p {
 .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .agent-chip {
   font-size: 0.75rem;
-  font-family: 'Outfit';
+  font-family: 'Special Gothic';
   padding: 0.4rem 0.7rem;
   border-radius: 8px;
   border: 1px solid var(--border-subtle);
@@ -897,12 +897,12 @@ footer.app-footer p {
   max-width: 520px;
 }
 .metric { flex: 1; background: rgba(255, 255, 255, 0.015); padding: 0.8rem 1rem; text-align: center; }
-.metric-val { font-family: 'JetBrains Mono'; font-size: 1.5rem; font-weight: 800; color: var(--accent); line-height: 1; }
+.metric-val { font-family: 'Source Code Pro'; font-size: 1.5rem; font-weight: 800; color: var(--accent); line-height: 1; }
 .metric-unit { font-size: 0.8rem; margin-left: 1px; }
 .metric-label {
   font-size: 0.6rem;
   color: var(--text-muted);
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   text-transform: uppercase;
   letter-spacing: 0.06em;
   margin-top: 4px;
@@ -922,7 +922,7 @@ footer.app-footer p {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   font-size: 0.72rem;
   padding: 0.25rem 0.6rem;
   border-radius: 999px;
@@ -973,7 +973,7 @@ footer.app-footer p {
 .tools-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
 .tool-pill {
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   font-size: 0.68rem;
   padding: 0.2rem 0.55rem;
   border-radius: 6px;
@@ -999,7 +999,7 @@ footer.app-footer p {
   gap: 8px;
   font-size: 0.78rem;
   color: var(--text-sec);
-  font-family: 'JetBrains Mono';
+  font-family: 'Source Code Pro';
   white-space: nowrap;
 }
 
@@ -1066,7 +1066,7 @@ footer.app-footer p {
   flex-wrap: wrap;
 }
 .insp-tab {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: 'Source Code Pro', monospace;
   font-size: 0.72rem;
   padding: 4px 10px;
   border-radius: 6px;
@@ -1222,7 +1222,7 @@ footer.app-footer p {
 .execution-summary p { margin: 8px 0; }
 
 /* Progressive disclosure for model usage: calm summary, technical detail on demand. */
-.pov-execution { color: #e8edeb; background: #112733; border: 1px solid #3d4f58; border-radius: 12px; font-size: 13px; margin: 12px 0; overflow: hidden; }
+.pov-execution { color: #fdfff5; background: #001e2b; border: 1px solid #2a424d; border-radius: 12px; font-size: 13px; margin: 12px 0; overflow: hidden; }
 .pov-execution > summary { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding: 13px 16px; cursor: pointer; list-style: none; }
 .pov-execution > summary::-webkit-details-marker { display: none; }
 .pov-execution > summary:focus-visible { outline: 2px solid #00ed64; outline-offset: -3px; border-radius: 12px; }
@@ -1235,12 +1235,12 @@ footer.app-footer p {
 .pov-execution-toggle { width: 16px; text-align: center; color: #b8c4c8; }
 .pov-execution-toggle::after { content: '+'; font-size: 20px; }
 .pov-execution[open] .pov-execution-toggle::after { content: '−'; }
-.pov-execution-body { border-top: 1px solid #3d4f58; padding: 14px 16px; }
-.pov-execution-body p { color: #c1c7c6; line-height: 1.5; margin: 0 0 12px; }
+.pov-execution-body { border-top: 1px solid #2a424d; padding: 14px 16px; }
+.pov-execution-body p { color: #cdd5ce; line-height: 1.5; margin: 0 0 12px; }
 .pov-execution-calls { list-style: none; margin: 0; padding: 0; }
 .pov-execution-calls li { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 0; border-bottom: 1px solid #304550; }
 .pov-execution-calls li > div:first-child { display: grid; gap: 3px; overflow-wrap: anywhere; }
-.pov-execution-calls li > div:first-child > span { color: #c1c7c6; }
+.pov-execution-calls li > div:first-child > span { color: #cdd5ce; }
 .pov-execution-call-meta { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; color: #b8c4c8; font-size: 12px; font-variant-numeric: tabular-nums; }
 .pov-execution-body .pov-execution-disclaimer { margin: 12px 0 0; font-size: 11px; color: #b8c4c8; }
 @media (max-width: 600px) { .pov-execution > summary { gap: 12px; padding: 12px; } .pov-execution-title { flex-basis: 100%; } .pov-execution-mode { max-width: 100%; } .pov-execution-toggle { margin-left: auto; } .pov-execution-body { padding: 12px; } }

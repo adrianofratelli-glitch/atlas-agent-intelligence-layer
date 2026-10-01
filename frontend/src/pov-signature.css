@@ -1,26 +1,86 @@
-/* MongoDB PoV portfolio signature v3.
-   Keep this file byte-identical across the independent PoV repositories.
-   Domain styling belongs in the app stylesheet; this layer owns shared
-   interaction, accessibility and the segmented "document rail". */
+/* MongoDB PoV portfolio signature v4 — "Dark Stage".
+   Keep this file byte-identical across the independent PoV repositories
+   (source of truth: PoVs/_shared/ui/pov-signature.css; sync with sync-ui.sh).
+   Domain styling belongs in the app stylesheet; this layer owns the shared
+   tokens, type, motion, interaction, accessibility and the signature motifs
+   taken from the 2026 MongoDB template: stair-step band + perspective grid. */
+
+@font-face {
+  font-family: "Special Gothic";
+  src: url("./fonts/SpecialGothic.woff2") format("woff2");
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Special Gothic Condensed One";
+  src: url("./fonts/SpecialGothicCondensedOne.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Code Pro";
+  src: url("./fonts/SourceCodePro.woff2") format("woff2");
+  font-weight: 200 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* LeafyGreen hard-codes Euclid Circular A/B; alias them to the template face
+   so no component falls back to a different typeface. */
+@font-face {
+  font-family: "Euclid Circular A";
+  src: url("./fonts/SpecialGothic.woff2") format("woff2");
+  font-weight: 300 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "MongoDB Value Serif";
+  src: url("./fonts/SpecialGothic.woff2") format("woff2");
+  font-weight: 300 800;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Euclid Circular B";
+  src: url("./fonts/SpecialGothic.woff2") format("woff2");
+  font-weight: 300 800;
+  font-display: swap;
+}
+
 :root {
-  --pov-bg: #001e2b;
-  --pov-surface: #112733;
-  --pov-card: #1c2d38;
-  --pov-border: #3d4f58;
-  --pov-text: #e8edeb;
-  --pov-text-secondary: #c1c7c6;
-  --pov-muted: #889397;
+  /* Surfaces — darkest first. #061621 / #001E2B come from mongodb.com and the
+     2026 template; card/hover steps are derived from them (not official). */
+  --pov-bg: #061621;
+  --pov-surface: #001e2b;
+  --pov-card: #0a2633;
+  --pov-card-hover: #10303f;
+  --pov-forest-bg: #023430;
+  --pov-border: #2a424d;
+  --pov-border-strong: #404f54;
+  --pov-text: #fdfff5;
+  --pov-text-secondary: #cdd5ce;
+  --pov-muted: #9ea2a1;
   --pov-green: #00ed64;
   --pov-green-dark: #00684a;
-  --pov-blue: #0498ec;
-  --pov-yellow: #ffc010;
+  --pov-lime: #b1ff05;
+  --pov-blue: #3d9dff;
+  --pov-blue-fill: #006cfa;
+  --pov-yellow: #ffad00;
   --pov-red: #ff6960;
+  --pov-purple: #765cf8;
+  --pov-cyan: #00c2eb;
+  --pov-magenta: #d959ea;
+  --pov-orange: #ff4f00;
+  --pov-pink: #f1007e;
   --pov-radius-sm: 6px;
   --pov-radius-md: 12px;
   --pov-radius-lg: 16px;
-  --pov-motion: 180ms cubic-bezier(.2,.8,.2,1);
-  --pov-font-sans: Outfit, Inter, "Helvetica Neue", Arial, sans-serif;
-  --pov-font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --pov-ease: cubic-bezier(.2, .7, .2, 1);
+  --pov-motion: 180ms var(--pov-ease);
+  --pov-font-sans: "Special Gothic", "Helvetica Neue", Arial, sans-serif;
+  --pov-font-display: "Special Gothic Condensed One", "Arial Narrow", Impact, "Helvetica Neue", sans-serif;
+  --pov-font-mono: "Source Code Pro", "SFMono-Regular", Consolas, monospace;
   --pov-space-1: 4px;
   --pov-space-2: 8px;
   --pov-space-3: 12px;
@@ -28,41 +88,183 @@
   --pov-space-5: 24px;
   --pov-space-6: 32px;
   --pov-shell-gutter: clamp(16px, 3vw, 48px);
-  --pov-code-bg: #001923;
-  --pov-focus-ring: 0 0 0 3px rgba(4, 152, 236, .24);
-  --pov-skeleton: rgba(193, 199, 198, .08);
-  --pov-skeleton-highlight: rgba(193, 199, 198, .16);
+  --pov-code-bg: #03111a;
+  --pov-focus-ring: 0 0 0 3px rgba(61, 157, 255, .28);
+  --pov-skeleton: rgba(205, 213, 206, .06);
+  --pov-skeleton-highlight: rgba(205, 213, 206, .14);
+
+  /* Aliases consumed by the app stylesheets — the whole portfolio re-themes
+     from here. App-level domain colours (--pix, --cifrado, --lake…) stay. */
+  --bg-primary: var(--pov-bg);
+  --bg: var(--pov-bg);
+  --bg-secondary: var(--pov-surface);
+  --bg-sec: var(--pov-surface);
+  --bg-card: var(--pov-card);
+  --bg-card-base: var(--pov-card);
+  --bg-card-hover: var(--pov-card-hover);
+  --border-subtle: var(--pov-border);
+  --text-pri: var(--pov-text);
+  --text-primary: var(--pov-text);
+  --text: var(--pov-text);
+  --text-sec: var(--pov-text-secondary);
+  --text-secondary: var(--pov-text-secondary);
+  --text-muted: var(--pov-muted);
+  --text-disabled: #667579;
+  --sub: var(--pov-muted);
+  --accent: var(--pov-green);
+  --green: var(--pov-green);
+  --link: var(--pov-blue);
+  --warning: var(--pov-yellow);
+  --danger: var(--pov-red);
+  --border-accent: rgba(0, 237, 100, .28);
+  --accent-glow: rgba(0, 237, 100, .12);
+  --bg-subtle: rgba(253, 255, 245, .035);
+  --font: var(--pov-font-sans);
+  --font-sans: var(--pov-font-sans);
+  --sans: var(--pov-font-sans);
+  --font-mono: var(--pov-font-mono);
+  --mono: var(--pov-font-mono);
+
   color-scheme: dark;
+  font-family: var(--pov-font-sans);
+  accent-color: var(--pov-green);
+}
+
+html, body {
+  background-color: var(--pov-bg);
+  color: var(--pov-text);
+  font-family: var(--pov-font-sans);
+  scrollbar-gutter: stable;
 }
 
 [data-pov-shell] {
   min-height: 100vh;
   isolation: isolate;
+  font-family: var(--pov-font-sans);
   accent-color: var(--pov-green);
-  scrollbar-color: var(--pov-border) var(--pov-bg);
+  scrollbar-color: var(--pov-border-strong) var(--pov-bg);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
 }
 
-/* Signature: a BSON/document-inspired rail, repeated across every PoV. */
+/* ── Type ───────────────────────────────────────────────────────────────── */
+[data-pov-shell] :where(button, input, select, textarea) { font-family: inherit; }
+
+[data-pov-shell] h1, [data-pov-shell] h2, .pov-display {
+  font-family: var(--pov-font-display);
+  font-weight: 400;
+  font-synthesis: none;
+  text-transform: uppercase;
+  letter-spacing: .005em;
+  word-spacing: .14em;
+  line-height: 1.04;
+}
+[data-pov-shell] :where(h1) { text-wrap: balance; }
+[data-pov-shell] :where(h3, h4, h5, h6) { text-wrap: balance; }
+
+[data-pov-shell] :where(code, pre, kbd, samp, .mono, .pov-eyebrow) {
+  font-family: var(--pov-font-mono);
+  font-variant-ligatures: none;
+  font-variant-numeric: tabular-nums;
+}
+[data-pov-shell] :where(table, .num, .tabular) { font-variant-numeric: tabular-nums; }
+[data-pov-shell] :where(p, li, dd) { overflow-wrap: anywhere; }
+[data-pov-shell] :where(span, strong, em, a, td, th, label) { overflow-wrap: break-word; }
+
+/* Reusable pieces for the apps. */
+.pov-eyebrow {
+  font-size: 11px;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--pov-green);
+}
+.pov-stat {
+  font-family: var(--pov-font-display);
+  font-size: clamp(40px, 6vw, 88px);
+  line-height: .9;
+  letter-spacing: .005em;
+  word-spacing: .14em;
+  color: var(--pov-green);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Signature 1: stair-step band (template "chevron" motif) ─────────────── */
 [data-pov-shell]::before {
   content: "";
   position: fixed;
   inset: 0 0 auto;
   z-index: 10000;
-  height: 3px;
+  height: 6px;
   pointer-events: none;
   background:
-    linear-gradient(
-      90deg,
-      var(--pov-green) 0 56px,
-      var(--pov-green-dark) 56px 92px,
-      var(--pov-blue) 92px 100px,
-      rgba(0, 237, 100, .18) 100px 34%,
-      transparent 72%
-    );
+    linear-gradient(90deg,
+      var(--pov-forest-bg) 0 40px,
+      var(--pov-green-dark) 40px 80px,
+      var(--pov-green) 80px 120px,
+      var(--pov-lime) 120px 144px,
+      transparent 144px),
+    linear-gradient(90deg, rgba(0, 237, 100, .22), transparent 55%);
+  clip-path: polygon(0 0, 100% 0, 100% 2px, 144px 2px, 138px 100%, 0 100%);
+  transform-origin: left center;
+  animation: pov-band-in 720ms var(--pov-ease) both;
 }
 
+/* ── Signature 3: template stair-step cluster, top-right, behind content ── */
+html { background-color: var(--pov-bg); }
+body { background: transparent !important; }
+html::before {
+  content: "";
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  z-index: -1;
+  width: min(36vw, 480px);
+  height: min(22vw, 290px);
+  pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 760 440%22%3E%3Cg transform=%22translate%28160 0%29 skewX%28-18%29%22%3E%3Cpolyline points=%22-40,500 110,500 110,390 260,390 260,280 410,280 410,170 560,170 560,60 710,60 710,-50 860,-50 860,-160%22 fill=%22none%22 stroke=%22%23023430%22 stroke-width=%2252%22 stroke-linejoin=%22miter%22 stroke-miterlimit=%2210%22/%3E%3Cpolyline points=%226,454 156,454 156,344 306,344 306,234 456,234 456,124 606,124 606,14 756,14 756,-96 906,-96 906,-206%22 fill=%22none%22 stroke=%22%2300684A%22 stroke-width=%2252%22 stroke-linejoin=%22miter%22 stroke-miterlimit=%2210%22/%3E%3Cpolyline points=%2252,408 202,408 202,298 352,298 352,188 502,188 502,78 652,78 652,-32 802,-32 802,-142 952,-142 952,-252%22 fill=%22none%22 stroke=%22%2300ED64%22 stroke-width=%2252%22 stroke-linejoin=%22miter%22 stroke-miterlimit=%2210%22/%3E%3Cpolyline points=%2298,362 248,362 248,252 398,252 398,142 548,142 548,32 698,32 698,-78 848,-78 848,-188 998,-188 998,-298%22 fill=%22none%22 stroke=%22%23B1FF05%22 stroke-width=%2252%22 stroke-linejoin=%22miter%22 stroke-miterlimit=%2210%22/%3E%3C/g%3E%3C/svg%3E") right bottom / cover no-repeat;
+  opacity: .5;
+  -webkit-mask-image: linear-gradient(to top left, #000 0, rgba(0,0,0,.45) 45%, transparent 85%);
+  mask-image: linear-gradient(to top left, #000 0, rgba(0,0,0,.45) 45%, transparent 85%);
+  animation: pov-fade-in 900ms var(--pov-ease) both;
+}
+@keyframes pov-fade-in { from { opacity: 0; transform: translate(24px, 12px); } to { opacity: .5; transform: none; } }
+
+/* Hero art: add .pov-motif to any hero/section; the stair cluster sits on its
+   right edge behind the copy. Keep copy in the left 55% (max-width). */
+:root { --pov-stairs: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 760 440%22%3E%3Cg transform=%22translate%28160 0%29 skewX%28-18%29%22%3E%3Cpolyline points=%22-40,500 110,500 110,390 260,390 260,280 410,280 410,170 560,170 560,60 710,60 710,-50 860,-50 860,-160%22 fill=%22none%22 stroke=%22%23023430%22 stroke-width=%2252%22 stroke-linejoin=%22miter%22 stroke-miterlimit=%2210%22/%3E%3Cpolyline points=%226,454 156,454 156,344 306,344 306,234 456,234 456,124 606,124 606,14 756,14 756,-96 906,-96 906,-206%22 fill=%22none%22 stroke=%22%2300684A%22 stroke-width=%2252%22 stroke-linejoin=%22miter%22 stroke-miterlimit=%2210%22/%3E%3Cpolyline points=%2252,408 202,408 202,298 352,298 352,188 502,188 502,78 652,78 652,-32 802,-32 802,-142 952,-142 952,-252%22 fill=%22none%22 stroke=%22%2300ED64%22 stroke-width=%2252%22 stroke-linejoin=%22miter%22 stroke-miterlimit=%2210%22/%3E%3Cpolyline points=%2298,362 248,362 248,252 398,252 398,142 548,142 548,32 698,32 698,-78 848,-78 848,-188 998,-188 998,-298%22 fill=%22none%22 stroke=%22%23B1FF05%22 stroke-width=%2252%22 stroke-linejoin=%22miter%22 stroke-miterlimit=%2210%22/%3E%3C/g%3E%3C/svg%3E"); }
+.pov-motif, .hero, .hero-stage { position: relative; isolation: isolate; }
+.pov-motif::after, .hero::after, .hero-stage::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: -1;
+  width: min(52%, 640px);
+  pointer-events: none;
+  background: var(--pov-stairs) right center / contain no-repeat;
+  -webkit-mask-image: linear-gradient(to left, #000 35%, transparent 100%);
+  mask-image: linear-gradient(to left, #000 35%, transparent 100%);
+  opacity: .9;
+  animation: pov-fade-in 900ms var(--pov-ease) both;
+}
+@media (max-width: 720px) { .pov-motif::after, .hero::after, .hero-stage::after { width: 70%; opacity: .45; } }
+@media (forced-colors: active) { .pov-motif::after, .hero::after, .hero-stage::after { display: none; } }
+
+/* ── Signature 2: perspective grid (template hero grid) ──────────────────── */
+[data-pov-shell]::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    repeating-radial-gradient(circle at 50% 135%, rgba(0, 237, 100, .09) 0 1px, transparent 1px 74px),
+    repeating-conic-gradient(from 270deg at 50% 135%, rgba(0, 237, 100, .09) 0 .25deg, transparent .25deg 4.5deg);
+  -webkit-mask-image: radial-gradient(120% 90% at 50% 120%, #000 15%, transparent 70%);
+  mask-image: radial-gradient(120% 90% at 50% 120%, #000 15%, transparent 70%);
+  opacity: .9;
+}
+
+/* ── Skip link, focus, targets ──────────────────────────────────────────── */
 .pov-skip-link {
   position: fixed;
   z-index: 10001;
@@ -74,19 +276,14 @@
   border-radius: var(--pov-radius-sm);
   background: var(--pov-card);
   color: var(--pov-text);
-  font: 600 12px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  font: 600 12px/1.2 var(--pov-font-mono);
   text-decoration: none;
-  box-shadow: 0 12px 36px rgba(0, 0, 0, .45);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, .5);
   transition: transform var(--pov-motion);
 }
+.pov-skip-link:focus { transform: translateY(0); }
 
-.pov-skip-link:focus {
-  transform: translateY(0);
-}
-
-[data-pov-shell] :where(button, a, input, select, textarea, summary) {
-  -webkit-tap-highlight-color: transparent;
-}
+[data-pov-shell] :where(button, a, input, select, textarea, summary) { -webkit-tap-highlight-color: transparent; }
 
 [data-pov-shell] :where(button, [role="button"], a, input, select, textarea, summary) {
   transition:
@@ -94,7 +291,8 @@
     background-color var(--pov-motion),
     border-color var(--pov-motion),
     opacity var(--pov-motion),
-    transform var(--pov-motion);
+    transform var(--pov-motion),
+    box-shadow var(--pov-motion);
 }
 
 [data-pov-shell] :where(button, [role="button"], a, input, select, textarea, summary):focus-visible {
@@ -103,62 +301,74 @@
   box-shadow: var(--pov-focus-ring);
 }
 
-[data-pov-shell] :where(input, select, textarea) {
-  min-height: 40px;
-  min-width: 0;
+/* Fields already draw their own frame (and LeafyGreen wraps them): keep one ring. */
+[data-pov-shell] :where(input, select, textarea):focus-visible {
+  outline-offset: 0;
+  box-shadow: none;
+}
+[data-pov-shell] :where(input, select, textarea) { min-height: 40px; min-width: 0; }
+[data-pov-shell] :where(button, [role="button"], summary) { min-width: 36px; min-height: 36px !important; }
+[data-pov-shell] :where(summary) { display: flex; align-items: center; }
+[data-pov-shell] :where(button, [role="button"]):disabled { cursor: not-allowed; filter: saturate(.7); }
+[data-pov-shell] :where([aria-busy="true"]) { cursor: progress; }
+[data-pov-shell] :where(::selection) { background: rgba(0, 237, 100, .28); color: var(--pov-text); }
+
+/* ── Motion: transform + opacity only, one easing, 160–220 ms ────────────── */
+@keyframes pov-rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes pov-band-in {
+  from { transform: scaleX(.05); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+@keyframes pov-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .55; transform: scale(.82); }
+}
+@keyframes pov-skeleton-sweep {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
 }
 
-[data-pov-shell] :where(button, [role="button"], summary) {
-  min-width: 36px;
-  min-height: 36px !important;
+[data-pov-shell] :where(main, [role="tabpanel"], .pov-stage) > * {
+  animation: pov-rise 420ms var(--pov-ease) both;
+}
+[data-pov-shell] :where(main, [role="tabpanel"], .pov-stage) > :nth-child(2) { animation-delay: 60ms; }
+[data-pov-shell] :where(main, [role="tabpanel"], .pov-stage) > :nth-child(3) { animation-delay: 120ms; }
+[data-pov-shell] :where(main, [role="tabpanel"], .pov-stage) > :nth-child(4) { animation-delay: 180ms; }
+[data-pov-shell] :where(main, [role="tabpanel"], .pov-stage) > :nth-child(n+5) { animation-delay: 240ms; }
+
+@media (hover: hover) and (pointer: fine) {
+  [data-pov-shell] :where(button:not(:disabled), [role="button"], summary) { cursor: pointer; }
+  [data-pov-shell] :where(button:not(:disabled), [role="button"]):active { transform: translateY(1px) scale(.985); }
 }
 
-[data-pov-shell] :where(summary) {
-  display: flex;
-  align-items: center;
+.pov-live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pov-green);
+  animation: pov-pulse 2.2s ease-in-out infinite;
 }
 
-[data-pov-shell] :where(button, [role="button"]):disabled {
-  cursor: not-allowed;
-  filter: saturate(.7);
-}
-
-[data-pov-shell] :where(code, pre, kbd, samp, .mono) {
-  font-variant-ligatures: none;
-  font-variant-numeric: tabular-nums;
-}
-
-[data-pov-shell] :where(table) {
-  font-variant-numeric: tabular-nums;
-}
-
-[data-pov-shell] :where(h1, h2, h3) {
-  text-wrap: balance;
-}
-
-[data-pov-shell] :where(p, li, dd) {
-  overflow-wrap: anywhere;
-}
-
-[data-pov-shell] :where([aria-busy="true"]) {
-  cursor: progress;
-}
-
-[data-pov-shell] :where(.pov-skeleton) {
+.pov-skeleton {
+  position: relative;
+  overflow: hidden;
   color: transparent !important;
   border-color: transparent !important;
-  background:
-    linear-gradient(
-      100deg,
-      var(--pov-skeleton) 20%,
-      var(--pov-skeleton-highlight) 36%,
-      var(--pov-skeleton) 52%
-    );
-  background-size: 220% 100%;
-  animation: pov-skeleton-sweep 1.35s ease-in-out infinite;
+  background: var(--pov-skeleton) !important;
+}
+.pov-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 20%, var(--pov-skeleton-highlight) 50%, transparent 80%);
+  animation: pov-skeleton-sweep 1.4s ease-in-out infinite;
 }
 
-[data-pov-shell] :where(.pov-visually-hidden) {
+.pov-visually-hidden {
   position: absolute !important;
   width: 1px !important;
   height: 1px !important;
@@ -170,21 +380,17 @@
   border: 0 !important;
 }
 
-[data-pov-shell] :where(::selection) {
-  background: rgba(0, 237, 100, .25);
-  color: var(--pov-text);
-}
-
-@keyframes pov-skeleton-sweep {
-  from { background-position: 100% 0; }
-  to { background-position: -100% 0; }
-}
-
-@media (hover: hover) and (pointer: fine) {
-  [data-pov-shell] :where(button:not(:disabled), [role="button"], summary) {
-    cursor: pointer;
+/* Progressive enhancement: scroll-driven reveal for opt-in blocks. */
+@supports (animation-timeline: view()) {
+  .pov-reveal {
+    animation: pov-rise linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 35%;
   }
 }
+
+/* Long lists/tabs: skip off-screen rendering work. */
+.pov-defer { content-visibility: auto; contain-intrinsic-size: auto 480px; }
 
 @media (pointer: coarse) {
   [data-pov-shell] :where(button, [role="button"], input, select, textarea, summary) {
@@ -194,22 +400,13 @@
 }
 
 @media (max-width: 720px) {
-  [data-pov-shell]::before {
-    background:
-      linear-gradient(
-        90deg,
-        var(--pov-green) 0 44px,
-        var(--pov-green-dark) 44px 72px,
-        var(--pov-blue) 72px 78px,
-        rgba(0, 237, 100, .15) 78px 60%,
-        transparent
-      );
-  }
-
+  [data-pov-shell]::before { height: 5px; }
   [data-pov-shell] :where(button, [role="button"], input, select, textarea, summary) {
     min-width: 44px;
     min-height: 44px !important;
   }
+  [data-pov-shell]::after { opacity: .6; }
+  html::before { opacity: .35; width: 60vw; height: 36vw; }
 }
 
 @media (forced-colors: active) {
@@ -217,10 +414,8 @@
     outline: 2px solid Highlight !important;
     box-shadow: none;
   }
-
-  [data-pov-shell]::before {
-    background: Highlight;
-  }
+  [data-pov-shell]::before { background: Highlight; }
+  [data-pov-shell]::after, html::before { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -230,6 +425,7 @@
   [data-pov-shell] *::after {
     scroll-behavior: auto !important;
     animation-duration: .01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: .01ms !important;
   }

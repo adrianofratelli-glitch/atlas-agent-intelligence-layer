@@ -169,6 +169,15 @@ async def check_live_config() -> list[Check]:
         guard.fail(f"{type(exc).__name__}: {str(exc)[:100]}")
     checks.append(guard)
 
+    dilution = Check("anti-diluição do denylist (pov-shared)")
+    import policy_guardrails as guardrails
+    if guardrails._shared_clause_scorer() is None:
+        dilution.fail("pov-shared ausente: denylist pontua só o texto inteiro (evadível por "
+                      "diluição) — rode scripts/bootstrap-venvs.sh --runtime")
+    else:
+        dilution.ok("texto inteiro + cada intenção (ascore_by_clause)")
+    checks.append(dilution)
+
     turn = Check("turn_classifier_config")
     try:
         doc = await ai_brain()["turn_classifier_config"].find_one({}, max_time_ms=MAX_TIME_MS)

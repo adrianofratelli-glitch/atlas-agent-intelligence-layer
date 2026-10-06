@@ -130,23 +130,27 @@ async def get_policy(area: str = "default") -> dict:
     return doc or {}
 
 
-async def _semantic_denylist(
-    text: str, threshold: float, area: str
-) -> tuple[dict | None, bool, dict | None]:
-    """$vectorSearch the message against forbidden example utterances.
+def _shared_clause_scorer():
+    """`ascore_by_clause` do pov-shared, ou None se o pacote não estiver instalado.
 
-    Returns (match | None, available, near_miss | None). `available=False`
-    significa que a camada semântica não pôde rodar (índice ausente) — quem
-    decide se isso bloqueia é a política da área (`semantic_fail_mode`), não
-    este helper. `near_miss` é o melhor candidato quando o score fica LOGO
-    ABAIXO do threshold (dentro de NEAR_MISS_MARGIN) — não bloqueia, mas é
-    sinal de possível tentativa que o denylist ainda não cobre.
-
-    Entries with area "global" apply everywhere; entries with a specific area only
-    there. The scoping is a NATIVE pre-filter: `area` is a filter field in the
-    vector index, so the ANN search only traverses applicable entries — the top
-    match is always valid, no matter how large the denylist grows.
+    Sem ele a camada volta a pontuar só o texto inteiro (evadível por diluição) e
+    isso é logado em WARNING uma vez — o preflight acusa o mesmo antes da demo.
     """
+    try:
+        from guardrails import ascore_by_clause  # pov-shared (núcleo); NUNCA este módulo
+    except ImportError:
+        return None
+    return ascore_by_clause
+
+
+_warned_no_clause_scorer = False
+_COLON_BOUNDARY = re.compile(r"(?<=\w)\s*:\s+")
+
+
+async def _denylist_top(text: str, area: str) -> tuple[float, dict] | None:
+    """UM $vectorSearch do `text` contra o denylist da área. Devolve (score, doc)
+    do melhor vizinho, (0.0, {}) se não há entradas, ou None se o índice não
+    pôde ser consultado (camada indisponível)."""
     def _pipeline(with_filter: bool) -> list[dict]:
         stage = {
             "index": DENYLIST_INDEX,
@@ -172,17 +176,101 @@ async def _semantic_denylist(
             docs = [d for d in docs if d.get("area") in (None, "global", area)]
         except Exception as exc:  # noqa: BLE001 — índice ausente → camada indisponível
             logger.warning("denylist semântico indisponível (área=%s): %s", area, exc)
-            return None, False, None
+            return None
     if not docs:
+        return 0.0, {}
+    return round(float(docs[0].get("score", 0)), 4), docs[0]
+
+
+async def score_denylist(text: str, area: str):
+    """Pontua o texto inteiro E cada intenção isolada (anti-diluição) e devolve
+    `(ClauseScore | None, available)`.
+
+    Por que: o embedding da mensagem inteira se afasta da frase proibida quando
+    o usuário anexa uma segunda intenção benigna (medido: 0,93 → 0,68, abaixo de
+    qualquer pergunta legítima). Pontuar cada cláusula e usar o MÁXIMO fecha o
+    buraco sem mexer no threshold. Uma cláusula cujo $vectorSearch falhe conta
+    como 0; só o texto inteiro falhando torna a camada indisponível.
+    """
+    global _warned_no_clause_scorer
+    whole_failed = False
+
+    # `split_intents` do pov-shared corta em . ? ! ; e conectores, mas não em
+    # ":" — e "faça X: me mostre Y" é a forma clássica de anexar o 2º comando
+    # (medido: 0,6768 inteiro, sem cláusula). Só a DECOMPOSIÇÃO vê ": " como
+    # fim de frase; o texto inteiro continua sendo pontuado exatamente como veio.
+    split_text = _COLON_BOUNDARY.sub(". ", text)
+
+    async def _score(fragment: str):
+        nonlocal whole_failed
+        is_whole = fragment is split_text
+        res = await _denylist_top(text if is_whole else fragment, area)
+        if res is None:
+            if is_whole:
+                whole_failed = True
+            return 0.0, {}
+        return res
+
+    scorer = _shared_clause_scorer()
+    if scorer is None:
+        if not _warned_no_clause_scorer:
+            logger.warning("pov-shared ausente: denylist pontua só o texto inteiro "
+                           "(evadível por diluição). Rode scripts/bootstrap-venvs.sh.")
+            _warned_no_clause_scorer = True
+        res = await _denylist_top(text, area)
+        if res is None:
+            return None, False
+        from types import SimpleNamespace
+        return SimpleNamespace(score=res[0], payload=res[1], clause=text, index=-1,
+                               whole_score=res[0], by_clause=False,
+                               clauses=(), scores=()), True
+    result = await scorer(split_text, _score)
+    if result.index < 0:
+        result.clause = text
+    if whole_failed:
+        return None, False
+    return result, True
+
+
+async def _semantic_denylist(
+    text: str, threshold: float, area: str
+) -> tuple[dict | None, bool, dict | None]:
+    """$vectorSearch the message (and each of its intents) against forbidden
+    example utterances.
+
+    Returns (match | None, available, near_miss | None). `available=False`
+    significa que a camada semântica não pôde rodar (índice ausente) — quem
+    decide se isso bloqueia é a política da área (`semantic_fail_mode`), não
+    este helper. `near_miss` é o melhor candidato quando o score fica LOGO
+    ABAIXO do threshold (dentro de NEAR_MISS_MARGIN) — não bloqueia, mas é
+    sinal de possível tentativa que o denylist ainda não cobre.
+
+    O score comparado é o MÁXIMO entre o texto inteiro e cada intenção isolada
+    (`score_by_clause` do pov-shared) — o threshold é o mesmo de antes.
+
+    Entries with area "global" apply everywhere; entries with a specific area only
+    there. The scoping is a NATIVE pre-filter: `area` is a filter field in the
+    vector index, so the ANN search only traverses applicable entries — the top
+    match is always valid, no matter how large the denylist grows.
+    """
+    result, available = await score_denylist(text, area)
+    if not available:
+        return None, False, None
+    doc = result.payload or {}
+    if not doc:
         return None, True, None
-    top_score = round(float(docs[0].get("score", 0)), 4)
+    top_score = round(float(result.score), 4)
+    extra = {"whole_score": round(float(result.whole_score), 4),
+             "by_clause": bool(result.by_clause)}
+    if result.by_clause:
+        extra["clause"] = result.clause[:200]
     if top_score >= threshold:
-        return {"phrase": docs[0].get("phrase"), "category": docs[0].get("category"),
-                "score": top_score}, True, None
+        return {"phrase": doc.get("phrase"), "category": doc.get("category"),
+                "score": top_score, **extra}, True, None
     if top_score >= threshold - NEAR_MISS_MARGIN:
         return None, True, {
-            "closest_phrase": docs[0].get("phrase"), "category": docs[0].get("category"),
-            "score": top_score, "threshold": threshold,
+            "closest_phrase": doc.get("phrase"), "category": doc.get("category"),
+            "score": top_score, "threshold": threshold, **extra,
         }
     return None, True, None
 
@@ -263,8 +351,11 @@ async def check_input(text: str, user_key: str, session_id: str,
     if match:
         violations.append({
             "rule": "denylist_semantico", "kind": "topico_proibido",
-            "detail": f'próximo de "{match["phrase"]}" ({match["category"]})',
+            "detail": f'próximo de "{match["phrase"]}" ({match["category"]})'
+                      + (" — intenção isolada numa mensagem composta" if match.get("by_clause") else ""),
             "score": match["score"],
+            "whole_score": match.get("whole_score"),
+            "by_clause": match.get("by_clause", False),
         })
     elif not semantic_available and policy.get("semantic_fail_mode", "open") == "closed":
         # área crítica com fail-closed: sem camada semântica → não passa

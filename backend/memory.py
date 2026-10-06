@@ -329,6 +329,10 @@ async def load_relevant(user_key: str, query: str) -> dict:
     return {**base, "facts": [_fact_out(d) for d in docs], "mode": mode}
 
 
+def _neutralize_delimiters(text: str) -> str:
+    return text.replace("<", "‹").replace(">", "›").replace("\n", " ")
+
+
 def format_for_prompt(ltm: dict, max_chars: int = MAX_PROMPT_MEMORY_CHARS) -> str:
     """Render LTM facts as a system-prompt block. Empty string when nothing is known.
 
@@ -343,7 +347,9 @@ def format_for_prompt(ltm: dict, max_chars: int = MAX_PROMPT_MEMORY_CHARS) -> st
     selected = []
     used = 0
     for fact in facts:
-        line = f"- {fact['fact']}"
+        # `<`/`>` viram aspas angulares: um fato não consegue FECHAR o bloco
+        # </fatos_do_cliente> e escrever "instrução" fora dele (quebra de delimitador).
+        line = "- " + _neutralize_delimiters(str(fact.get("fact", "")))
         if selected and used + len(line) + 1 > max_chars:
             break
         selected.append(line[:max_chars - used])

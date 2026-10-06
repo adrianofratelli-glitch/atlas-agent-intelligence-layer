@@ -85,6 +85,19 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__=='__main__': unittest.main()
 
+class NoDirectProviderFallbackTests(unittest.IsolatedAsyncioTestCase):
+    async def test_without_grove_gateway_there_is_no_direct_anthropic_call(self):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ('GROVE_API_KEY', 'GROVE_ANTHROPIC_BASE_URL', 'GROVE_BASE_URL', 'ANTHROPIC_BASE_URL')}
+        env['ANTHROPIC_API_KEY'] = 'sk-ant-direct-subscription'
+        with patch.dict(os.environ, env, clear=True):
+            client = gw.GatewayClient('test')
+            self.assertIsNone(client.native, 'nenhum cliente apontando para api.anthropic.com')
+            with self.assertRaises(ValueError):
+                await client.messages.create(model='claude-sonnet-4-5', max_tokens=8,
+                                             messages=[{'role': 'user', 'content': 'oi'}])
+
+
 class EvaluationTests(unittest.TestCase):
     def test_failed_tasks_remain_in_cost_per_success(self):
         from eval_report import summarize

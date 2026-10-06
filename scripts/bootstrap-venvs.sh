@@ -13,14 +13,22 @@
 # o benchmark de memória com Mem0.
 set -euo pipefail
 
+# Uso: scripts/bootstrap-venvs.sh            # os três venvs
+#      scripts/bootstrap-venvs.sh --runtime  # só backend/.venv (o que a demo precisa)
 cd "$(dirname "$0")/.."
 command -v uv >/dev/null || { echo "uv não encontrado (brew install uv)"; exit 1; }
+[ -d ../_shared ] || { echo "../_shared (pov-shared) não encontrado ao lado do repo"; exit 1; }
 
 echo "==> backend/.venv (runtime + pov-shared[tracing])"
 [ -d backend/.venv ] || uv venv backend/.venv
 uv pip install --python backend/.venv/bin/python -r backend/requirements.txt
 uv pip install --python backend/.venv/bin/python -e "../_shared[tracing]"
 uv pip check --python backend/.venv/bin/python
+
+if [ "${1:-}" = "--runtime" ]; then
+  echo "OK (runtime). Testes: cd backend && .venv/bin/python -m unittest discover -s tests"
+  exit 0
+fi
 
 echo "==> .venv-eval (pov-shared[eval] — Ragas)"
 [ -d .venv-eval ] || uv venv --python 3.12 .venv-eval

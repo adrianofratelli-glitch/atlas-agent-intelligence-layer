@@ -2,10 +2,16 @@
 guardrail_policies, area_profiles) and the POC support domain.
 
 Idempotent: uses replace_one/update_one with upsert, so it can be run as many
-times as you like. Também aplica migrações de schema (datas string → BSON date,
+times as you like. É o RESET ÚNICO da demo: dados de negócio, denylist (com
+embeddings autoEmbed regerados pelo Atlas), índices regulares/TTL/vetoriais/BM25
+e o runtime (sessões, checkpoints, memória, auditoria). Também aplica migrações de schema (datas string → BSON date,
 memória v1 → v2) e cria os índices regulares, TTL e vetoriais.
 
-    python seed.py
+    MONGODB_DB=POC_test MONGODB_BRAIN_DB=ai_brain_test python seed.py   # banco de teste
+    ALLOW_DEMO_DB_WRITE=1 python seed.py                                # reset da demo
+    python seed.py --keep-runtime    # só dados/índices; mantém memória e auditoria
+
+Recusa o banco da demo (POC/ai_brain) sem ALLOW_DEMO_DB_WRITE=1.
 """
 
 import os
@@ -600,7 +606,13 @@ GUARDRAIL_DENYLIST = [
      "phrase": "como esconder a origem do dinheiro para não pagar imposto",
      "category": "atividade_ilegal", "area": "global"},
     {"_id": "deny_fraude_2",
-     "phrase": "posso dizer que o produto não chegou para receber o dinheiro de volta",
+     # Redigido pela INTENÇÃO (alegar FALSAMENTE), não pelo fato "não chegou":
+     # a versão anterior ("posso dizer que o produto não chegou para receber o
+     # dinheiro de volta") bloqueava a reclamação legítima "meu fone ainda não
+     # chegou" (0,7844 ≥ 0,7799, medido em 2026-10-06). Esta segue bloqueando a
+     # antiga (0,8281) e "posso alegar que não recebi…" (0,8025), e solta a
+     # reclamação legítima (0,7182). Ver scripts/measure_dilution.py.
+     "phrase": "posso alegar falsamente que não recebi para ficar com o produto e com o dinheiro",
      "category": "fraude", "area": "global"},
     {"_id": "deny_fraude_3",
      "phrase": "quero abrir uma reclamação falsa de defeito para ganhar um produto novo",
@@ -871,10 +883,40 @@ def create_vector_indexes(client) -> None:
                 print(f"  ⚠ não criei BM25 '{spec['name']}': {str(exc)[:120]}")
 
 
-def main():
+# Coleções de RUNTIME que um reset completo esvazia: conversas, checkpoints do
+# LangGraph (sem isso sobram checkpoints órfãos de sessões já apagadas), memória
+# de longo prazo, auditoria, fila de near-miss e traces. Tudo isso é gerado pela
+# própria demo e recriado por ela; nada aqui é configuração medida.
+RUNTIME_COLLECTIONS = (
+    "agent_sessions", "langgraph_checkpoints", "langgraph_checkpoint_writes",
+    "agent_memory", "guardrail_events", "guardrail_candidates", "agent_traces",
+    "admin_audit",
+)
+DEMO_MAIN_DB, DEMO_BRAIN_DB = "POC", "ai_brain"
+
+
+def _allow_demo_write() -> bool:
+    return os.getenv("ALLOW_DEMO_DB_WRITE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def refuse_demo_db(main_db: str, brain_db: str) -> None:
+    """O seed REESCREVE a demo inteira: recusa o banco da demo sem opt-in explícito.
+    Rodar sem querer no meio de uma apresentação apagaria conversas e memória."""
+    if (main_db == DEMO_MAIN_DB or brain_db == DEMO_BRAIN_DB) and not _allow_demo_write():
+        sys.exit(
+            f"RECUSADO: seed.py reescreveria o banco da demo ({main_db}/{brain_db}).\n"
+            "Para resetar a demo de propósito: ALLOW_DEMO_DB_WRITE=1 python seed.py\n"
+            "Para um banco de teste: MONGODB_DB=POC_test MONGODB_BRAIN_DB=ai_brain_test python seed.py"
+        )
+
+
+def main(argv: list[str] | None = None):
+    argv = sys.argv[1:] if argv is None else argv
+    keep_runtime = "--keep-runtime" in argv
     uri = os.getenv("MONGODB_URI")
     if not uri:
         sys.exit("MONGODB_URI não definida — copie .env.example para .env e preencha.")
+    refuse_demo_db(_DB_MAIN, _DB_BRAIN)
 
     client = MongoClient(uri, serverSelectionTimeoutMS=10_000)
     client.admin.command("ping")
@@ -925,11 +967,24 @@ def main():
     # demo se contradiz na tela, com confiança. As FAQs seedadas (scope "faq") ficam:
     # elas não dependem do estado de nenhum pedido.
     dropped = poc["semantic_cache"].delete_many({"scope": {"$ne": "faq"}}).deleted_count
-    dropped_sessions = poc["agent_sessions"].delete_many({}).deleted_count
-    print(f"Cache de runtime invalidado: {dropped} entradas de semantic_cache, "
-          f"{dropped_sessions} sessões (os dados de negócio foram redefinidos)")
+    print(f"Cache de runtime invalidado: {dropped} entradas de semantic_cache "
+          "(os dados de negócio foram redefinidos)")
+    if keep_runtime:
+        dropped_sessions = poc["agent_sessions"].delete_many({}).deleted_count
+        print(f"  --keep-runtime: só {dropped_sessions} sessões apagadas; memória, "
+              "auditoria e checkpoints mantidos")
+    else:
+        wiped = {name: poc[name].delete_many({}).deleted_count for name in RUNTIME_COLLECTIONS}
+        print("Runtime zerado: " + ", ".join(f"{k}={v}" for k, v in wiped.items()))
 
-    # Guardrail semantic denylist (Vector Search over forbidden utterances)
+    # Guardrail semantic denylist (Vector Search over forbidden utterances).
+    # Frases promovidas pela revisão humana (review_candidate) são runtime: o
+    # reset volta ao denylist seedado. `--keep-runtime` as preserva.
+    if not keep_runtime:
+        removed = poc["guardrail_denylist"].delete_many(
+            {"_id": {"$nin": [e["_id"] for e in GUARDRAIL_DENYLIST]}}).deleted_count
+        if removed:
+            print(f"Denylist: {removed} frases fora do seed removidas")
     for entry in GUARDRAIL_DENYLIST:
         poc["guardrail_denylist"].replace_one({"_id": entry["_id"]}, entry, upsert=True)
 
@@ -1092,10 +1147,13 @@ def main():
     AUDIT_TTL_DAYS = 30
     for coll_name in ("guardrail_events", "agent_traces", "guardrail_candidates",
                       "admin_audit"):
-        try:  # índice antigo em `at` (sem TTL) fica redundante — remove
-            poc[coll_name].drop_index("at_-1")
-        except Exception:  # noqa: BLE001 — não existia
-            pass
+        # índice antigo em `at` SEM TTL bloqueia o TTL (mesma chave, outras opções):
+        # o create_index abaixo falhava e a auditoria da demo nunca expirava
+        # (achado 2026-10-06: POC.guardrail_events/agent_traces tinham `at_1`).
+        for name, spec in poc[coll_name].index_information().items():
+            if (name != "ttl_at_30d" and spec.get("key") in ([("at", 1)], [("at", -1)])
+                    and "expireAfterSeconds" not in spec):
+                poc[coll_name].drop_index(name)
         try:
             poc[coll_name].create_index("at", name="ttl_at_30d",
                                         expireAfterSeconds=AUDIT_TTL_DAYS * 24 * 3600)

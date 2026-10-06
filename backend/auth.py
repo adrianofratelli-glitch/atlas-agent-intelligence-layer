@@ -83,6 +83,13 @@ def resolve_user_key(request: Request, fallback: str | None) -> str | None:
             subject = claims.get("sub")
             if not isinstance(subject, str) or not subject:
                 raise HTTPException(status_code=401, detail="Token sem identidade.")
+            # Token de UM usuário com payload de OUTRO = estado de cliente obsoleto
+            # (ex.: troca de identidade antes do login anterior responder). Responder
+            # como o dono do token atenderia a pessoa errada, com a política da área
+            # errada — então falha alto em vez de escolher em silêncio.
+            if fallback and fallback != subject:
+                raise HTTPException(status_code=409,
+                                    detail="A identidade do token difere da pedida. Refaça o login.")
             return subject
         except jwt.InvalidTokenError as exc:
             raise HTTPException(status_code=401, detail="Token inválido.") from exc

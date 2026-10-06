@@ -121,7 +121,7 @@ def ensure_seeded(*, wait_indexes: bool = True) -> list[str]:
     if client[main_db]["app_users"].count_documents({}) == 0:
         import seed
 
-        seed.main()   # já lê MONGODB_DB/MONGODB_BRAIN_DB via db.DB_MAIN/DB_BRAIN
+        seed.main([])   # já lê MONGODB_DB/MONGODB_BRAIN_DB via db.DB_MAIN/DB_BRAIN
         messages.append(f"seed executado em {main_db}/{brain_db}")
     else:
         messages.append(f"seed: {main_db}.app_users já populado")

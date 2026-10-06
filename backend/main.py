@@ -569,7 +569,19 @@ async def quick_chat(body: QuickChatBody, request: Request):
         user = await profiles.require_demo_user(resolved)
         area = user.get("area", "default")
         identity = resolved
-    guard = await guardrails.check_input(body.question, identity, "quick-chat", area)
+    # O histórico vem do NAVEGADOR: um cliente forjado pode plantar a intenção
+    # proibida num turno "anterior" e só perguntar "e então?" agora. Os turnos de
+    # usuário do histórico passam pelo MESMO guardrail (em paralelo, sem custo de
+    # latência sequencial). Cada linha vira uma cláusula na pontuação anti-diluição.
+    history_text = "\n".join(t.text.strip() for t in body.history[-QUICK_CHAT_HISTORY_TURNS:]
+                             if t.role == "user" and t.text.strip())[-QUICK_CHAT_HISTORY_CHARS:]
+    checks = [guardrails.check_input(body.question, identity, "quick-chat", area)]
+    if history_text:
+        checks.append(guardrails.check_input(history_text, identity, "quick-chat-history", area))
+    guards = await asyncio.gather(*checks)
+    guard = guards[0]
+    if guard["allowed"] and len(guards) > 1 and not guards[1]["allowed"]:
+        guard = {**guards[1], "masked_text": guard.get("masked_text")}
     if not guard["allowed"]:
         return {
             "text": guard["block_message"],

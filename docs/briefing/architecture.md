@@ -38,7 +38,7 @@ A aba 3 é o core do produto e o assunto deste documento (e de `agent-behavior.m
 | `main.py` | Superfície da API REST/SSE, propriedade do `session_id`, persistência do trace |
 | `llm.py` | Leitura de `ai_brain.model_config` a cada chamada |
 | `guidance.py` | Anexos de orientação quando busca volta vazia ou escrita é negada |
-| `seed.py` | Seed idempotente de `ai_brain` + `POC`, criação/atualização de índices (regulares, TTL, vetoriais, BM25) |
+| `seed.py` | Reset único e idempotente de `ai_brain` + `POC`: dados, denylist, índices (regulares, TTL, vetoriais, BM25) e runtime (sessões, checkpoints, memória, auditoria). Recusa `POC`/`ai_brain` sem `ALLOW_DEMO_DB_WRITE=1`; `--keep-runtime` preserva memória e auditoria |
 | `calibrate_thresholds.py` | Mede thresholds de cache/guardrail contra probes rotulados — nunca escolhido à mão |
 
 ## Fluxo de dados por turno (aba Agente)

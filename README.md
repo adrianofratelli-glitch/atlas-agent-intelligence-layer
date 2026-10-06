@@ -73,19 +73,29 @@ Each step is a real MongoDB operation, visible in the trace and in the in-app in
 
 ## Run it
 
-```bash
-cp .env.example .env
-./start.sh          # FastAPI :8010 + Vite :5183
-```
-
-By default the launcher serves the optimized frontend build without a watcher. For HMR development run `POV_DEV=1 ./start.sh`; the build is only redone when sources, lockfile, or configuration change. Separately: `cd backend && .venv/bin/uvicorn main:app --reload --port 8010` and `cd frontend && npm run dev`.
+Prerequisites: Python 3.14, Node 20+, [`uv`](https://docs.astral.sh/uv/), an Atlas cluster with Vector Search (`voyage-4` autoEmbed), and access to an Anthropic-compatible LLM gateway (`GROVE_*` in `.env`). There is no direct-provider fallback: without the gateway the LLM paths are disabled.
 
 ```bash
-cd backend && .venv/bin/python -m unittest discover -s tests -v
-cd backend && .venv/bin/python seed.py                  # idempotent, restores demo data; not mid-presentation
-cd backend && .venv/bin/python calibrate_thresholds.py  # --apply writes the measured thresholds
-npm run test:visual                                     # Playwright visual regression, app running
+cp .env.example .env                       # fill MONGODB_URI and GROVE_*; never commit it
+./scripts/bootstrap-venvs.sh --runtime     # backend/.venv + pov-shared (see below)
+ALLOW_DEMO_DB_WRITE=1 backend/.venv/bin/python backend/seed.py   # one-shot full reset of the demo
+./start.sh                                 # FastAPI 127.0.0.1:8010 + Vite 127.0.0.1:5183
 ```
+
+**`pov-shared`.** The anti-dilution scoring of the semantic guardrail, the deterministic injection heuristic, and the tracing helpers come from `pov-shared`, the workspace package that lives next to this repo in `../_shared`. `scripts/bootstrap-venvs.sh` installs it editable (`uv pip install -e "../_shared[tracing]"`). Without it the app still starts (the imports fail open), but the denylist falls back to whole-message scoring, which a second intent can dilute; `./scripts/preflight.sh` fails in that case. Run the script without `--runtime` to also build the two auxiliary venvs (`.venv-eval` for Ragas, `.venv-memory` for the Mem0 benchmark); the demo does not need them.
+
+**Reset.** `seed.py` is the single reset command: business data, area profiles and policies, the denylist (Atlas re-embeds it through autoEmbed), regular/TTL/vector/BM25 indexes, and the runtime (sessions, LangGraph checkpoints, long-term memory, guardrail audit and near-miss queue, traces). It refuses the demo databases (`POC`/`ai_brain`) unless `ALLOW_DEMO_DB_WRITE=1` is set; point it at `MONGODB_DB=POC_test MONGODB_BRAIN_DB=ai_brain_test` for a test copy, or pass `--keep-runtime` to keep memory and audit. Never run it mid-presentation.
+
+By default the launcher serves the optimized frontend build without a watcher. For HMR development run `POV_DEV=1 ./start.sh`; the build is only redone when sources, lockfile, or configuration change. Separately: `cd backend && .venv/bin/uvicorn main:app --reload --host 127.0.0.1 --port 8010` and `cd frontend && npm run dev`.
+
+```bash
+cd backend && .venv/bin/python -m unittest discover -s tests -v   # includes the *_adversarial suites
+cd backend && .venv/bin/python scripts/measure_dilution.py        # read-only: denylist scores before/after per-clause scoring
+cd backend && .venv/bin/python calibrate_thresholds.py            # --apply writes the measured thresholds
+npm install && npx playwright install chromium && npm run test:visual   # Playwright visual regression, app running
+```
+
+If 5183 is taken by another app, run the visual tests against the reserved fallback port: `cd frontend && npx vite preview --host 127.0.0.1 --port 5283 --strictPort`, then `BASE_URL=http://127.0.0.1:5283 npm run test:visual`.
 
 Docker: `docker build -t intelligence-layer-poc . && docker run --env-file .env -p 18082:8080 intelligence-layer-poc`.
 
@@ -105,11 +115,11 @@ An index still `BUILDING`, a missing `model_config`, a broken swap chain, `npx` 
 
 The full argument, with measured numbers, is in [docs/memoria-agentica-mongodb.md](docs/memoria-agentica-mongodb.md) (Portuguese). In one line: short-term memory, long-term memory, semantic cache, live configuration, and trace are **documents in the same cluster**. Per-user isolation is a pre-filter inside the vector index (not an application `WHERE`), retrieval is hybrid (`$vectorSearch` + BM25 with RRF) over the same documents, and the turn checkpoint is a `$set` on the same conversation document, with no second system to coordinate.
 
-## Known limitation of the semantic guardrail
+## Semantic guardrail and dilution
 
-The denylist compares the embedding of the whole message with those of the forbidden phrases. A forbidden phrase combined with a **second, unrelated intent** drops from 0.9284 to **0.6799** similarity and stops blocking, even below legitimate domain questions (0.7330–0.7680). No threshold adjustment fixes this without turning legitimate customers into blocks. It is a limit of the single-phrase-embedding pattern, not poor calibration; fixing it requires sub-intent decomposition or an additional classification layer.
+The denylist used to compare only the embedding of the whole message with the forbidden phrases, so a forbidden phrase followed by a **second, unrelated intent** dropped below the threshold (0.9284 alone, 0.6799 diluted) and no threshold could catch it without blocking legitimate customers. Since 2026-10 the message is scored **as a whole and per intent** (sentences, `;`, `:` and connectors such as "além disso", via `pov-shared`'s `ascore_by_clause`), the per-intent `$vectorSearch` calls run in parallel, and the highest score is compared with the **same** calibrated threshold.
 
-In practice the turn does not leak data: the policy rewrite denies broad reads on the server and the client receives guidance. The denylist is one layer, not the only one. Measurements and root cause in [docs/eval-report.md](docs/eval-report.md) (Portuguese).
+Measured on 2026-10-06 against the real `guardrail_denylist_vs` index (`scripts/measure_dilution.py`, test copy of the data): 6 diluted forbidden requests went from 1/6 blocked (whole-message scores 0.6762–0.7807) to 6/6 blocked (0.8209–0.9278); 8 legitimate two-intent questions stayed allowed (max 0.7512 vs threshold 0.7799), and the 10 labeled single-phrase probes of `calibrate_thresholds.py` kept their scores. A blocked turn records `by_clause`, the winning intent, and the whole-message score in `guardrail_events`. Remaining limit: terse, ambiguous claims ("o produto não chegou, quero meu dinheiro de volta") still sit near the fraud phrase (~0.79), because an embedding cannot tell a real claim from a false one; the policy rewrite on the server still denies broad reads.
 
 ## License
 

@@ -200,12 +200,15 @@ class GatewayClient:
         if key and not base:
             # Falha fechado: sem base o SDK mandaria a chave Grove para api.anthropic.com.
             raise ValueError('GROVE_ANTHROPIC_BASE_URL is required when GROVE_API_KEY is set')
-        kwargs = {}
+        # Sem base de gateway NÃO existe caminho para o LLM: o SDK cairia em
+        # api.anthropic.com com ANTHROPIC_API_KEY (assinatura direta), o que a
+        # regra do workspace proíbe. Falha fechado na chamada, não no import.
+        self.native = None
         if base:
             checked_url(base)
             kwargs = {'base_url': base, 'default_headers': {'Authorization': f"Bearer {key or os.getenv('ANTHROPIC_API_KEY', '')}"}}
-        self.native = AsyncAnthropic(api_key=key or os.getenv('ANTHROPIC_API_KEY') or 'not-configured',
-                                    max_retries=0, timeout=45, **kwargs)
+            self.native = AsyncAnthropic(api_key=key or os.getenv('ANTHROPIC_API_KEY') or 'not-configured',
+                                        max_retries=0, timeout=45, **kwargs)
 
     async def create(self, *, model, **kwargs):
         fallback = kwargs.pop('_fallback', False)
@@ -213,6 +216,9 @@ class GatewayClient:
         is_openai = not is_claude(model)
         try:
             if not is_openai:
+                if self.native is None:
+                    raise ValueError('GROVE_API_KEY + GROVE_ANTHROPIC_BASE_URL são obrigatórios: '
+                                     'o LLM só é chamado pelo gateway Grove (sem fallback direto)')
                 response = await self.native.messages.create(model=model, **kwargs)
                 usage = response.usage
             else:

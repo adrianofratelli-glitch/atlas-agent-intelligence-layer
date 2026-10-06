@@ -143,6 +143,24 @@ class HostileHttpInputTests(unittest.TestCase):
         self.assertIn(r.status_code, (400, 401, 403, 404, 422))
 
 
+class IdentityRaceTests(unittest.TestCase):
+    """Troca de identidade com login atrasado: token de A + payload de B nunca é
+    atendido como A (achado no E2E: Marina caía na política do Suporte)."""
+
+    def test_token_and_payload_mismatch_is_rejected(self):
+        from fastapi import HTTPException
+        import auth
+
+        token = auth.issue_token("cliente-demo", "default")["access_token"]
+        req = mock.MagicMock()
+        req.headers = {"authorization": f"Bearer {token}"}
+        self.assertEqual(auth.resolve_user_key(req, "cliente-demo"), "cliente-demo")
+        self.assertEqual(auth.resolve_user_key(req, None), "cliente-demo")
+        with self.assertRaises(HTTPException) as ctx:
+            auth.resolve_user_key(req, "marina.fin")
+        self.assertEqual(ctx.exception.status_code, 409)
+
+
 class SeedGuardTests(unittest.TestCase):
     def test_seed_refuses_demo_database_without_opt_in(self):
         import seed

@@ -24,7 +24,18 @@ export function setAuthToken(token) {
   authToken = token;
 }
 
+// Trocar de identidade é assíncrono: sem sequência, o login ANTERIOR que
+// respondesse depois sobrescrevia o token e o turno seguinte saía com a
+// identidade (e a área/guardrail) de outra pessoa. Só o login mais recente grava
+// o token, e toda request espera o login pendente.
+let loginSeq = 0;
+let pendingLogin = Promise.resolve();
+
 async function request(path, options = {}) {
+  if (path !== '/api/auth/token') {
+    let waited;
+    do { waited = pendingLogin; await waited.catch(() => {}); } while (waited !== pendingLogin);
+  }
   return boundedRequest(async (signal) => {
     let res;
     try {
@@ -56,13 +67,17 @@ export const api = {
   metrics: () => request('/api/metrics'),
 
   // Auth — o switcher de identidade é o "login" da demo
-  login: async (userKey) => {
-    const tok = await request('/api/auth/token', {
+  login: (userKey) => {
+    const seq = ++loginSeq;
+    authToken = null;
+    pendingLogin = request('/api/auth/token', {
       method: 'POST',
       body: JSON.stringify({ user_key: userKey }),
+    }).then((tok) => {
+      if (seq === loginSeq) setAuthToken(tok.access_token);
+      return tok;
     });
-    setAuthToken(tok.access_token);
-    return tok;
+    return pendingLogin;
   },
 
   // Tab 1

@@ -43,7 +43,7 @@ import observability
 import policy_guardrails as guardrails
 import profiles
 import turn_classifier
-from db import DB_MAIN, MAX_TIME_MS, poc
+from db import DB_MAIN, MAX_TIME_MS, SESSION_IDLE_SECONDS, poc
 from guidance import is_obviously_out_of_scope, scope_reply
 
 logger = logging.getLogger("poc.agent_graph")
@@ -562,6 +562,10 @@ def _build_graph():
         _CHECKPOINT_CLIENT, db_name=DB_MAIN,
         checkpoint_collection_name="langgraph_checkpoints",
         writes_collection_name="langgraph_checkpoint_writes",
+        # Checkpoints expiram junto com a sessão (mesmo TTL de inatividade de
+        # agent_sessions). Sem isso eles ficavam órfãos para sempre: medido em
+        # 2026-10-06, 13 threads em POC.langgraph_checkpoints sem nenhuma sessão.
+        ttl=SESSION_IDLE_SECONDS,
     )
     return builder.compile(checkpointer=checkpointer)
 

@@ -130,7 +130,7 @@ Leitura honesta desses números:
 | "`crash_resume` prova persistência, não o que acontece no meio de uma tool" | cenário `crash_mid_tool`: `SIGKILL` DENTRO de uma chamada pendurada → 0 turnos meio-escritos e a mesma conversa responde no turno seguinte. O turno interrompido continua perdido (sem checkpoint por passo) — agora medido, não suposto |
 | "Langfuse fora do ar neste ambiente" | `tests/test_observability.py`: sem credenciais e com cliente quebrado, `start_trace` devolve `None` e todo método vira no-op; cobre também que `TRACE_MASK_PII=1` é escrito pelo CÓDIGO (quem rodar com `0` não consegue vazar PII nos spans) |
 | "Venvs auxiliares gitignorados" | `scripts/bootstrap-venvs.sh` recria os três do zero, com o motivo de cada separação no cabeçalho |
-| "Denylist evadida por diluição" | **decisão registrada: não corrigir nesta sessão** — ver achado 1 abaixo |
+| "Denylist evadida por diluição" | **corrigido em 2026-10-06**: pontuação por intenção com o mesmo limiar (6/6 diluídos bloqueados, 0/8 falsos positivos compostos; ver README, "Semantic guardrail and dilution", e `backend/scripts/measure_dilution.py`) |
 
 ## Achados que o eval revelou (não são falhas do eval)
 

@@ -35,7 +35,6 @@ Componentes de apoio:
 | Componente | Arquivo | O que faz |
 |---|---|---|
 | `JsonViewer` | `components/JsonViewer.jsx` | Documento cru formatado — sustenta "polimórfico" como afirmação verificável |
-| `PipelineSteps` | `components/PipelineSteps.jsx` | Etapas do turno em ordem (Perceive → Retrieve → Reason → Act → Store → Loop), o pipeline virando imagem |
 | `QueryDetails` | `components/QueryDetails.jsx` | Detalhe de uma chamada de ferramenta específica |
 | `ReplacementChain` | `components/ReplacementChain.jsx` (84 linhas) | Renderiza a cadeia de trocas quando o `$graphLookup` rodou no turno — procura no trace a chamada `aggregate` cujo pipeline contém `$graphLookup` e desenha `PED-1005 → PED-1006 → PED-1007`, com contadores e veredito |
 

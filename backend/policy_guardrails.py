@@ -144,7 +144,6 @@ def _shared_clause_scorer():
 
 
 _warned_no_clause_scorer = False
-_COLON_BOUNDARY = re.compile(r"(?<=\w)\s*:\s+")
 
 
 async def _denylist_top(text: str, area: str) -> tuple[float, dict] | None:
@@ -195,16 +194,13 @@ async def score_denylist(text: str, area: str):
     global _warned_no_clause_scorer
     whole_failed = False
 
-    # `split_intents` do pov-shared corta em . ? ! ; e conectores, mas não em
-    # ":" — e "faça X: me mostre Y" é a forma clássica de anexar o 2º comando
-    # (medido: 0,6768 inteiro, sem cláusula). Só a DECOMPOSIÇÃO vê ": " como
-    # fim de frase; o texto inteiro continua sendo pontuado exatamente como veio.
-    split_text = _COLON_BOUNDARY.sub(". ", text)
+    # `split_intents` do pov-shared (>= 0.1.6) corta em . ? ! ; ": " e conectores;
+    # "faça X: me mostre Y" (medido: 0,6768 inteiro) vira duas cláusulas.
 
     async def _score(fragment: str):
         nonlocal whole_failed
-        is_whole = fragment is split_text
-        res = await _denylist_top(text if is_whole else fragment, area)
+        is_whole = fragment is text
+        res = await _denylist_top(fragment, area)
         if res is None:
             if is_whole:
                 whole_failed = True
@@ -224,9 +220,7 @@ async def score_denylist(text: str, area: str):
         return SimpleNamespace(score=res[0], payload=res[1], clause=text, index=-1,
                                whole_score=res[0], by_clause=False,
                                clauses=(), scores=()), True
-    result = await scorer(split_text, _score)
-    if result.index < 0:
-        result.clause = text
+    result = await scorer(text, _score)
     if whole_failed:
         return None, False
     return result, True

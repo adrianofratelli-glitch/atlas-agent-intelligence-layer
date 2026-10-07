@@ -4,7 +4,7 @@ Most AI applications keep their "intelligence" everywhere except the database: p
 
 This PoV moves that layer into the database. Prompt schemas, model configuration, semantic cache, guardrail policies, and the agent's short- and long-term memory are all documents: changed with one `update_one`, applied on the next request, no restart. One cluster, one query language, one security model, and every cache hit, memory fact, and guardrail decision is a queryable document instead of a black box.
 
-**Stack:** React + Vite + LeafyGreen · FastAPI + PyMongo Async · MongoDB Atlas (Vector Search, `voyage-4` autoEmbed) · MongoDB MCP Server · Claude Sonnet 4.5 / Haiku 4.5. The UI is in Brazilian Portuguese (used in customer sessions).
+**Stack:** React + Vite + LeafyGreen · FastAPI + PyMongo Async · MongoDB Atlas (Vector Search, `voyage-4` autoEmbed) · MongoDB MCP Server · Claude Sonnet 4.5 / Sonnet 5.5. The UI is in Brazilian Portuguese (used in customer sessions).
 
 ## The demo in four steps
 
@@ -14,7 +14,7 @@ This PoV moves that layer into the database. Prompt schemas, model configuration
 
 **2. Swapping the production model is one `update_one`.** `model_config` is read on every request; picking another model from the catalog changes latency and cost with zero deploys. The cost panel projects monthly spend from the session's real token counts.
 
-![Model swap between Sonnet and Haiku with projected monthly cost](docs/img/tab2-model-swap.png)
+![Model swap between Sonnet 4.5 and Sonnet 5.5 with projected monthly cost](docs/img/tab2-model-swap.png)
 
 **3. The agent runs a real tool-use loop through the MongoDB MCP Server.** It decides which tools to call (`find` an order, `$vectorSearch` the catalog, `update` a status) and they execute against Atlas over the same protocol an IDE would use. The run is replayed step by step as `Perceive → Retrieve → Reason → Act → Store → Loop`, with real read/write/latency counters.
 

@@ -43,7 +43,7 @@ PROMPT_TEMPLATES = [
                 ),
                 "user_template": "<contexto>{{rag_chunks}}</contexto>\n\nPergunta: {{question}}",
             },
-            "claude-haiku-4-5": {
+            "claude-sonnet-5-5": {
                 "system": "Assistente de catálogo. Seja conciso.",
                 "user_template": (
                     "Contexto: {{rag_chunks}}\nPergunta: {{question}}\n"
@@ -76,8 +76,8 @@ PROMPT_TEMPLATES = [
                 ],
                 "output_format": "markdown_table",
             },
-            # Haiku: lean structure, different fields — no ALTER TABLE
-            "claude-haiku-4-5": {
+            # Sonnet 5.5 (fallback): lean structure, different fields — no ALTER TABLE
+            "claude-sonnet-5-5": {
                 "system": "Comparador de produtos. Direto ao ponto.",
                 "user_template": (
                     "Produtos: {{rag_chunks}}\nComparar: {{question}}\n"
@@ -104,7 +104,7 @@ PROMPT_TEMPLATES = [
                 ),
                 "analysis_dimensions": ["sentimento", "qualidade", "custo-benefício"],
             },
-            "claude-haiku-4-5": {
+            "claude-sonnet-5-5": {
                 "system": "Analista de avaliações. Resuma em bullets.",
                 "user_template": (
                     "Dados: {{rag_chunks}}\nPedido: {{question}}\nMáximo 5 bullets."
@@ -127,7 +127,7 @@ MODEL_CONFIG = {
     },
     "fallback": {
         "provider": "anthropic",
-        "model": "claude-haiku-4-5",
+        "model": "claude-sonnet-5-5",
         "temperature": 0.3,
         "max_tokens": 1024,
     },

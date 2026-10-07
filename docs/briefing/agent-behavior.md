@@ -107,7 +107,7 @@ coll.update_one(
 
 ### Leitura / hidratação no contexto (`_load_recent_history`, `agent.py:1082-1127`)
 
-Padrão híbrido, não é RAM: a janela recente (`HISTORY_TURNS = 6`, últimas 3 trocas) é lida do MongoDB e injetada literalmente nas `messages` do loop — referências implícitas ("aquele pedido que eu falei") funcionam. Turnos mais antigos que a janela **não são descartados nem cortados por caractere**: a partir de `SUMMARY_TRIGGER_TURNS = 12`, eles passam por **um resumo via Haiku** (`_summarize_older_turns`, agent.py:1050-1079, `SUMMARY_MODEL = "claude-haiku-4-5"`, até 3 frases, `MAX_SUMMARY_CHARS = 600`), cacheado no próprio documento da sessão (`history_summary`, `history_summary_covers`) até novos turnos antigos aparecerem — não resume a cada turno.
+Padrão híbrido, não é RAM: a janela recente (`HISTORY_TURNS = 6`, últimas 3 trocas) é lida do MongoDB e injetada literalmente nas `messages` do loop — referências implícitas ("aquele pedido que eu falei") funcionam. Turnos mais antigos que a janela **não são descartados nem cortados por caractere**: a partir de `SUMMARY_TRIGGER_TURNS = 12`, eles passam por **um resumo via Sonnet** (`_summarize_older_turns`, agent.py:1050-1079, `SUMMARY_MODEL = "claude-sonnet-5-5"`, até 3 frases, `MAX_SUMMARY_CHARS = 600`), cacheado no próprio documento da sessão (`history_summary`, `history_summary_covers`) até novos turnos antigos aparecerem — não resume a cada turno.
 
 Se o cliente pedir para "consolidar TODAS as perguntas desta sessão", o system prompt instrui o modelo a chamar `find` em `POC.agent_sessions` com o filtro `{session_id}` (reamarrado a `user_key` pelo reescritor) — o histórico completo é sempre uma query, nunca um objeto em memória do processo.
 
@@ -145,7 +145,7 @@ O extrator devolve `max_price_brl` estruturado no fato de limite de preço; um n
 
 ### Extração (`memory.extract_and_store`, `memory.py:323-462`)
 
-Chamada Haiku (`EXTRACTOR_MODEL = "claude-haiku-4-5"`) com output estruturado (`json_schema`), que recebe a mensagem do turno + a lista de fatos JÁ CONHECIDOS relevantes (do retrieval híbrido) e devolve fatos novos, cada um com `category` e `replaces` (índice do fato que ele substitui, ou 0 se é novo). O prompt do extrator recusa explicitamente "fatos" em forma de instrução/comando — defesa contra prompt injection via memória.
+Chamada Sonnet (`EXTRACTOR_MODEL = "claude-sonnet-5-5"`) com output estruturado (`json_schema`), que recebe a mensagem do turno + a lista de fatos JÁ CONHECIDOS relevantes (do retrieval híbrido) e devolve fatos novos, cada um com `category` e `replaces` (índice do fato que ele substitui, ou 0 se é novo). O prompt do extrator recusa explicitamente "fatos" em forma de instrução/comando — defesa contra prompt injection via memória.
 
 Escrita:
 - Fato sem `replaces` → `insert_one` simples.

@@ -11,7 +11,7 @@ Três abas de demonstração:
 | Aba | Componente | O que mostra |
 |---|---|---|
 | 1 — Schema flexível | `frontend/src/tabs/FlexibleSchema.jsx` | templates de prompt como documentos polimórficos em `ai_brain.prompt_templates`; `$set` ao vivo sem migração |
-| 2 — Troca de modelo e custo | `frontend/src/tabs/ModelSwap.jsx` | `ai_brain.model_config` lido a cada chamada de LLM (`backend/llm.py`); Sonnet↔Haiku é um `update_one` |
+| 2 — Troca de modelo e custo | `frontend/src/tabs/ModelSwap.jsx` | `ai_brain.model_config` lido a cada chamada de LLM (`backend/llm.py`); Sonnet 4.5↔Sonnet 5.5 é um `update_one` |
 | 3 — Agente | `frontend/src/tabs/Agent.jsx` | agente de suporte autônomo (`backend/agent.py`) rodando tool-use real contra MongoDB **via MongoDB MCP Server** |
 
 A aba 3 é o core do produto e o assunto deste documento (e de `agent-behavior.md`).

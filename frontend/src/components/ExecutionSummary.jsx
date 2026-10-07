@@ -1,6 +1,6 @@
 const labels = { support_agent: 'Atendimento', memory_extractor: 'Memória', model_swap: 'Assistente', investigator: 'Investigador' };
 const states = { ok: 'Concluída', error: 'Falhou', incomplete: 'Incompleta', circuit_open: 'Não enviada' };
-const modelName = model => model.replace(/^claude-haiku-4-5$/, 'Claude Haiku 4.5').replace(/^claude-sonnet-4-5$/, 'Claude Sonnet 4.5').replace(/^claude-sonnet-5$/, 'Claude Sonnet 5').replace(/^gpt-5.6-luna$/, 'GPT-5.6 Luna');
+const modelName = model => model.replace(/^claude-sonnet-5-5$/, 'Claude Sonnet 5.5').replace(/^claude-sonnet-4-5$/, 'Claude Sonnet 4.5').replace(/^claude-sonnet-5$/, 'Claude Sonnet 5').replace(/^gpt-5.6-luna$/, 'GPT-5.6 Luna');
 
 export default function ExecutionSummary({ calls, cost, mode, title = 'Resumo do turno', note, pending = false }) {
   const attempts = calls.filter(c => c.status !== 'circuit_open');

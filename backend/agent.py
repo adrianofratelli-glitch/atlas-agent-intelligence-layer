@@ -52,11 +52,11 @@ MAX_ITERS = 6  # safety cap on tool-use rounds
 MAX_SESSION_TURNS = 200   # $slice no $push: turns[] nunca cresce sem limite
 HISTORY_TURNS = 6         # janela recente hidratada no contexto do loop (3 trocas)
 # Turnos mais antigos que a janela recente não são descartados nem despejados
-# crus no prompt — a partir deste tamanho de sessão passam por UM resumo (Haiku)
+# crus no prompt — a partir deste tamanho de sessão passam por UM resumo (Sonnet)
 # em vez de corte por caractere. Alinhado à recomendação de "context summarization"
 # de arquiteturas de referência (GCP) para não estourar a janela em sessões longas.
 SUMMARY_TRIGGER_TURNS = 12
-SUMMARY_MODEL = "claude-haiku-4-5"
+SUMMARY_MODEL = "claude-sonnet-5-5"
 MAX_SUMMARY_CHARS = 600
 MAX_USER_MESSAGE_CHARS = 4_000
 MAX_HISTORY_CHARS = 6_000
@@ -1206,7 +1206,7 @@ async def _store_short_term(conversation_id, user_key, user_msg, final_answer,
 
 
 async def _summarize_older_turns(conversation_id: str, older_turns: list[dict]) -> str | None:
-    """Condensa turnos fora da janela recente num resumo curto (1 chamada Haiku).
+    """Condensa turnos fora da janela recente num resumo curto (1 chamada Sonnet).
 
     Só roda quando a sessão cruza SUMMARY_TRIGGER_TURNS e o resumo salvo já
     ficou defasado — não é chamado a cada turno. O resumo substitui o corte

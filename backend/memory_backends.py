@@ -116,7 +116,7 @@ class Mem0Memory:
             "embedder": {"provider": "fastembed",
                          "config": {"model": "BAAI/bge-small-en-v1.5"}},
             "llm": {"provider": "anthropic", "config": {
-                "model": model or os.getenv("MEM0_MODEL", "claude-haiku-4-5"),
+                "model": model or os.getenv("MEM0_MODEL", "claude-sonnet-5-5"),
                 "api_key": os.getenv("ANTHROPIC_API_KEY"),
             }},
         }

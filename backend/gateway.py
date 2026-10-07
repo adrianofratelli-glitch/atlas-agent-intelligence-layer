@@ -16,7 +16,7 @@ _calls = contextvars.ContextVar('llm_calls', default=None)
 # USD por 1M tokens (input+output+cache): média OBSERVADA na Grove, tela
 # "Usage & Spend" (2026-10-01). Estimativa de demo, não tarifa de fatura.
 DEFAULT_RATES = {
-    'claude-sonnet-5': 3.13, 'claude-sonnet-4-6': 4.40, 'claude-haiku-4-5': 1.38,
+    'claude-sonnet-5': 3.13, 'claude-sonnet-4-6': 4.40,
     'claude-sonnet-4-5': 1.79, 'claude-sonnet-5-5': 7.71, 'claude-opus-4-5': 17.67,
     'claude-opus-4-8': 15.00, 'claude-opus-5': 11.38, 'claude-opus-5-5': 17.33,
     'gpt-4.1': 1.16, 'gpt-4.1-mini': 0.69, 'gpt-4o': 4.32, 'gpt-4o-mini': 0.28,
@@ -114,7 +114,7 @@ def openai_models():
 # chave real em 2026-10-01. Fora de propósito: gpt-5.5/gpt-5.6-*/gpt-6-* (só
 # respondem pela Responses API, não por chat/completions) e gpt-5/gpt-5-mini
 # (gastam o orçamento de tokens em raciocínio e voltam incompletos).
-CATALOG = ['claude-haiku-4-5', 'claude-sonnet-4-5', 'claude-sonnet-5-5', 'claude-opus-4-5',
+CATALOG = ['claude-sonnet-4-5', 'claude-sonnet-5-5', 'claude-opus-4-5',
            'gpt-4o-mini', 'gpt-4.1', 'gpt-5.4-mini', 'gpt-5.4', 'grok-4.3', 'deepseek-v3.2']
 
 

@@ -20,7 +20,7 @@ Why one document per fact:
      mesma TRANSAÇÃO em que o novo é gravado. A memória nunca fica contraditória
      e o histórico permanece auditável (o fato antigo não é apagado).
 
-LTM is filled by a cheap Haiku extraction only when a local signal gate detects
+LTM is filled by a short Sonnet extraction only when a local signal gate detects
 durable first-person information. It pulls stable facts, compares them against
 relevant known facts, and flags which old fact each new one replaces (if any).
 """
@@ -42,7 +42,7 @@ MEMORY_COLLECTION = "agent_memory"
 MEMORY_INDEX = "agent_memory_vs"       # autoEmbed vector index on `fact`
 BM25_INDEX = "agent_memory_bm25"       # Atlas Search (lexical) on `fact`
 RRF_K = 60                             # constante padrão do Reciprocal Rank Fusion
-EXTRACTOR_MODEL = "claude-haiku-4-5"
+EXTRACTOR_MODEL = "claude-sonnet-5-5"
 MAX_ACTIVE_FACTS = 60                  # safety cap per user
 RELEVANT_LIMIT = 5                     # facts injected via $vectorSearch
 RECENT_MERGE = 2                       # freshest facts always merged in (autoEmbed

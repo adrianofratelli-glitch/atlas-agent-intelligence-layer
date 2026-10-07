@@ -99,7 +99,7 @@ class FakeResponse:
     def __init__(self, blocks):
         self.content = blocks
         self.usage = FakeUsage()
-        self.model = "claude-haiku-4-5"
+        self.model = "claude-sonnet-5-5"
         self.stop_reason = "end_turn"
 
 
@@ -186,7 +186,7 @@ async def _loop(session, llm, **overrides):
         answer = await agent._run_tool_loop(
             session, TOOLS, "sistema", "", "onde está meu pedido PED-1001?",
             lambda phase, kind, **fields: events.append({"phase": phase, "kind": kind, **fields}),
-            metrics, "claude-haiku-4-5", "conv_chaos", "cliente-demo",
+            metrics, "claude-sonnet-5-5", "conv_chaos", "cliente-demo",
             **overrides)
         return answer, events, metrics
     finally:

@@ -21,16 +21,17 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict(os.environ, {'LLM_BLENDED_PRICES':'{"x":-1}'}):
             with self.assertRaises(ValueError): gw.rates()
 
-    def test_observed_rates_price_every_catalog_model_and_haiku_is_cheaper(self):
+    def test_observed_rates_price_every_catalog_model_and_sonnet_4_5_is_cheaper(self):
         self.assertTrue(all(m['priced'] for m in gw.model_catalog()))
         usage={'input_tokens':1000,'output_tokens':200}
         cost={}
-        for m in ('claude-haiku-4-5','claude-sonnet-4-5'):
+        for m in ('claude-sonnet-5-5','claude-sonnet-4-5'):
             r=gw.new_record(m,'test')
             gw.finish_record(r, __import__('time').perf_counter(), usage)
             cost[m]=r['estimated_cost_usd']
-        self.assertAlmostEqual(cost['claude-haiku-4-5'],1200*1.38/1e6)
-        self.assertLess(cost['claude-haiku-4-5'],cost['claude-sonnet-4-5'])
+        self.assertAlmostEqual(cost['claude-sonnet-5-5'],1200*7.71/1e6)
+        self.assertLess(cost['claude-sonnet-4-5'],cost['claude-sonnet-5-5'])
+        self.assertNotIn('claude-haiku-4-5',[m['model'] for m in gw.model_catalog()])
 
     def test_blended_env_merges_with_defaults(self):
         with patch.dict(os.environ, {'LLM_BLENDED_PRICES': '{"modelo-novo":2.5}'}):
@@ -49,7 +50,7 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
     def test_catalog_providers(self):
         cat={m['model']:m['provider'] for m in gw.model_catalog()}
         self.assertEqual(cat['gpt-4.1'],'openai')
-        self.assertEqual(cat['claude-haiku-4-5'],'anthropic')
+        self.assertEqual(cat['claude-sonnet-5-5'],'anthropic')
 
     def test_endpoint_and_tool_history(self):
         with self.assertRaises(ValueError): gw.checked_url('https://example.com')

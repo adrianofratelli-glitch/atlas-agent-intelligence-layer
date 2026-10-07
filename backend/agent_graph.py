@@ -368,7 +368,7 @@ async def n_run_pipeline(state: TurnState, config) -> dict:
               reads=metrics["reads"], writes=metrics["writes"])
     if history_summary:
         _emit(ctx, trace, "retrieve", "message", actor="agent",
-              text="Turnos mais antigos desta sessão foram resumidos (Haiku) "
+              text="Turnos mais antigos desta sessão foram resumidos (Sonnet) "
                    "em vez de descartados/cortados crus — contexto extra sem "
                    "estourar o budget.")
 

@@ -40,8 +40,31 @@ async def run_turn(session, conversation_id, message, user_key="cliente-demo"):
         conversation_id=conversation_id, user_key=user_key)
 
 
+EXPECTED_CHECKS = 7
+
+
 async def main():
+    import anyio
+    import agent_graph
     params = agent.mcp_server_params()
+    # O encerramento do subprocess `npx` corre em paralelo com o reader de stdout
+    # do SDK `mcp`: o processo já saiu quando o reader tenta repassar o último
+    # frame, e isso sobe como anyio.BrokenResourceError no __aexit__ (mesma
+    # corrida benigna tratada em tests/test_mcp_contract.py). Só é benigna depois
+    # que TODAS as checagens rodaram; antes disso, propaga.
+    try:
+        await _probe(params)
+    except* anyio.BrokenResourceError:
+        if len(RESULTS) < EXPECTED_CHECKS:
+            raise
+        print("(teardown MCP: BrokenResourceError benigno após todas as checagens)")
+    await _cleanup(agent_graph)
+    failed = [n for n, ok, _ in RESULTS if not ok]
+    print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} passaram")
+    return 1 if failed or len(RESULTS) < EXPECTED_CHECKS else 0
+
+
+async def _probe(params):
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -116,6 +139,8 @@ async def main():
                   snap is not None and snap.config.get("configurable", {}).get("checkpoint_id"),
                   f"next={snap.next if snap else None}")
 
+
+async def _cleanup(agent_graph):
     for cid in ("adv_injection", "adv_cross_tenant", "adv_forced_status",
                 "adv_write_scope", "adv_oversized", "adv_owner_swap"):
         await poc()["agent_sessions"].delete_many({"session_id": cid})
@@ -125,10 +150,6 @@ async def main():
                     "adv_write_scope", "adv_oversized", "adv_owner_swap"):
             db["langgraph_checkpoints"].delete_many({"thread_id": cid})
             db["langgraph_checkpoint_writes"].delete_many({"thread_id": cid})
-
-    failed = [n for n, ok, _ in RESULTS if not ok]
-    print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} passaram")
-    return 1 if failed else 0
 
 
 if __name__ == "__main__":

@@ -9,6 +9,18 @@ async function boundedRequest(work, timeoutMs = 30000) {
 // HTTP client. Backend errors arrive as {error: {kind, message}} (503) and
 // become ApiError — the UI shows them in a yellow Banner, never a stack trace.
 
+// Mensagem humana por classe de status: a demo é ao vivo e "Erro HTTP 500"
+// não diz ao cliente o que aconteceu nem o que fazer.
+export function statusMessage(status) {
+  if (status === 401 || status === 403) return 'Acesso negado para esta identidade. Troque o usuário e tente de novo.';
+  if (status === 404) return 'Recurso não encontrado no backend.';
+  if (status === 409) return 'Conflito com outra operação em andamento. Tente de novo.';
+  if (status === 422 || status === 400) return 'Pedido inválido. Revise o texto e tente de novo.';
+  if (status === 429) return 'Muitas requisições seguidas. Aguarde alguns segundos.';
+  if (status >= 500) return 'O backend não conseguiu concluir este pedido agora. Tente de novo em instantes.';
+  return 'Não foi possível concluir o pedido.';
+}
+
 export class ApiError extends Error {
   constructor(kind, message) {
     super(message);
@@ -56,7 +68,7 @@ async function request(path, options = {}) {
     });
     if (!res.ok) {
       const err = body.error || {};
-      throw new ApiError(err.kind || 'erro', err.message || body.detail || `Erro HTTP ${res.status}`);
+      throw new ApiError(err.kind || 'erro', err.message || (typeof body.detail === 'string' ? body.detail : null) || statusMessage(res.status));
     }
     return body;
   }, path.includes('/agent/run') || path.includes('/chat/') ? 300000 : 30000)
@@ -134,7 +146,7 @@ export const api = {
     return {}
   });
       const err = errBody.error || {};
-      throw new ApiError(err.kind || 'erro', err.message || errBody.detail || `Erro HTTP ${res.status}`);
+      throw new ApiError(err.kind || 'erro', err.message || (typeof errBody.detail === 'string' ? errBody.detail : null) || statusMessage(res.status));
     }
     const reader = res.body.getReader();
     try {

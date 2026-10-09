@@ -107,3 +107,82 @@ class EvaluationTests(unittest.TestCase):
         self.assertAlmostEqual(report['cost_per_success_usd'],.03)
         self.assertEqual(report['p95_ms'],20)
         self.assertEqual(report['pass_rate'],.5)
+
+
+class ModelCapabilityTests(unittest.IsolatedAsyncioTestCase):
+    """Regressão P1 (2026-10-08): Sonnet 5.5 devolve 400 "`temperature` is
+    deprecated for this model"; enviar o parâmetro quebrava a troca de modelo
+    E o fallback (que também é 5.5)."""
+
+    def _client(self, create):
+        from types import SimpleNamespace
+        client = gw.GatewayClient('test')
+        client.native = SimpleNamespace(messages=SimpleNamespace(create=create))
+        return client
+
+    @staticmethod
+    def _ok(model):
+        from anthropic.types import Message
+        return Message(id='m', type='message', role='assistant', model=model,
+                       content=[{'type': 'text', 'text': 'ok'}], stop_reason='end_turn',
+                       usage={'input_tokens': 1, 'output_tokens': 1})
+
+    def test_capability_table(self):
+        for m in ('claude-sonnet-5-5', 'claude-opus-5-5', 'claude-opus-4-8', 'claude-sonnet-5'):
+            self.assertFalse(gw.capabilities(m)['sampling'], m)
+        for m in ('claude-sonnet-4-5', 'claude-haiku-4-5', 'claude-opus-4-5'):
+            self.assertTrue(gw.capabilities(m)['sampling'], m)
+        self.assertFalse(gw.capabilities('claude-modelo-futuro')['sampling'], 'desconhecido: sem sampling')
+        kw, dropped = gw.adapt_params('claude-sonnet-5-5', {'temperature': 0.3, 'top_p': 0.9, 'max_tokens': 9})
+        self.assertEqual(kw, {'max_tokens': 9})
+        self.assertEqual(dropped, ['temperature', 'top_p'])
+        kw, dropped = gw.adapt_params('claude-sonnet-4-5', {'temperature': 0.3})
+        self.assertEqual((kw, dropped), ({'temperature': 0.3}, []))
+
+    async def test_sonnet_5_5_never_receives_temperature(self):
+        seen = []
+        async def create(**kw):
+            seen.append(kw)
+            if 'temperature' in kw and kw['model'] == 'claude-sonnet-5-5':
+                raise AssertionError('temperature enviada a modelo que a rejeita')
+            return self._ok(kw['model'])
+        client = self._client(create)
+        await client.messages.create(model='claude-sonnet-5-5', temperature=0.3, max_tokens=8,
+                                     messages=[{'role': 'user', 'content': 'oi'}])
+        self.assertNotIn('temperature', seen[0])
+        await client.messages.create(model='claude-sonnet-4-5', temperature=0.3, max_tokens=8,
+                                     messages=[{'role': 'user', 'content': 'oi'}])
+        self.assertEqual(seen[1]['temperature'], 0.3, 'modelo que aceita mantém a temperatura')
+
+    async def test_deprecated_param_400_retries_once_without_sampling(self):
+        import httpx
+        from anthropic import BadRequestError
+        req = httpx.Request('POST', 'https://grove.mongodb.com/anthropic/v1/messages')
+        calls = []
+        async def create(**kw):
+            calls.append(kw)
+            if 'temperature' in kw:
+                raise BadRequestError('`temperature` is deprecated for this model.',
+                                      response=httpx.Response(400, request=req), body=None)
+            return self._ok(kw['model'])
+        with patch.dict(gw.MODEL_CAPABILITIES, {'claude-novo-x': {'sampling': True}}):
+            client = self._client(create)
+            await client.messages.create(model='claude-novo-x', temperature=0.3, max_tokens=8,
+                                         messages=[{'role': 'user', 'content': 'oi'}])
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn('temperature', calls[1])
+
+    async def test_llm_call_model_with_seeded_config_for_every_catalog_claude(self):
+        import llm
+        seen = []
+        async def create(**kw):
+            seen.append(kw)
+            if 'temperature' in kw and not gw.capabilities(kw['model'])['sampling']:
+                raise AssertionError(kw['model'])
+            return self._ok(kw['model'])
+        client = self._client(create)
+        with patch.object(llm, 'client', client):
+            for m in [c for c in gw.CATALOG if gw.is_claude(c)]:
+                r = await llm.call_model({'model': m, 'temperature': 0.3, 'max_tokens': 16}, 's',
+                                         [{'role': 'user', 'content': 'oi'}])
+                self.assertEqual(r['text'], 'ok')

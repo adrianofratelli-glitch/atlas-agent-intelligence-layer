@@ -775,8 +775,8 @@ SEMANTIC_CACHE_SEED = [
 
 # Atlas Vector Search indexes (autoEmbed voyage-4). `filters` viram campos do
 # tipo "filter" na definição: o $vectorSearch aplica o filtro DURANTE a busca ANN
-# (pré-filtro nativo) — isolamento por área/usuário garantido pelo índice, não
-# pelo código. Creating them requires an M10+ / Flex cluster with autoEmbed.
+# (pré-filtro nativo). O índice NÃO impõe o filtro: o isolamento é a cláusula
+# `filter` da query, montada por db.tenant_vector_stage (ADR-001). Creating them requires an M10+ / Flex cluster with autoEmbed.
 from db import DB_BRAIN as _DB_BRAIN, DB_MAIN as _DB_MAIN  # noqa: E402
 
 VECTOR_INDEXES = [
@@ -820,20 +820,35 @@ def _vector_index_definition(path: str, filters: list[str] | None = None) -> dic
     return {"fields": fields}
 
 
-def create_vector_indexes(client) -> None:
-    """Best-effort creation/update of the autoEmbed vector indexes.
+def _ensure_collection(db, name: str) -> None:
+    """Atlas não cria índice de busca em coleção inexistente: num banco vazio o
+    primeiro seed falhava em `turn_probes_vs` (a coleção só nascia depois) e o
+    reset saía com código 0 sem o índice (achado 2026-10-08)."""
+    if name not in db.list_collection_names():
+        try:
+            db.create_collection(name)
+        except Exception as exc:  # noqa: BLE001 — criada em paralelo: tudo bem
+            if "already exists" not in str(exc).lower():
+                raise
 
-    If the index already exists, we UPDATE its definition (adds the new filter
-    fields to indexes created by older seeds). Wrapped defensively: if the
-    cluster tier doesn't support autoEmbed, we print guidance instead of failing
-    the seed — the runtime degrades gracefully until the index is live.
+
+def create_vector_indexes(client) -> list[str]:
+    """Cria/atualiza os índices vetoriais autoEmbed e BM25. Devolve a lista de
+    índices que NÃO ficaram definidos (vazia = tudo certo).
+
+    Se o índice já existe, ATUALIZA a definição (acrescenta campos de filtro a
+    índices de seeds antigos). Falha (tier sem autoEmbed, coleção, permissão) não
+    aborta os demais índices, mas é devolvida: `main()` sai com código != 0, para
+    um reset sem índice obrigatório nunca parecer sucesso.
     """
     try:
         from pymongo.operations import SearchIndexModel
     except ImportError:
         SearchIndexModel = None
 
+    failed: list[str] = []
     for spec in VECTOR_INDEXES:
+        _ensure_collection(client[spec["db"]], spec["collection"])
         coll = client[spec["db"]][spec["collection"]]
         definition = _vector_index_definition(spec["path"], spec.get("filters"))
         try:
@@ -854,16 +869,19 @@ def create_vector_indexes(client) -> None:
                     print(f"  ✓ índice '{spec['name']}' atualizado (campos de filtro) "
                           f"em {spec['db']}.{spec['collection']}")
                 except Exception as upd:  # noqa: BLE001
+                    # existe, só não aceitou a atualização (ex.: já igual / em build)
                     print(f"  ⚠ índice '{spec['name']}' existe mas não pude atualizar: "
                           f"{str(upd)[:120]}")
                 continue
-            print(f"  ⚠ não criei '{spec['name']}' em {spec['db']}.{spec['collection']}: "  # noqa: E501
+            failed.append(f"{spec['db']}.{spec['collection']}:{spec['name']}")
+            print(f"  ✗ não criei '{spec['name']}' em {spec['db']}.{spec['collection']}: "  # noqa: E501
                   f"{str(exc)[:120]}")
             print(f"     Crie manualmente no Atlas (Vector Search) com a definição:")
             print(f"     {definition}")
 
-    # BM25: mesma mecânica best-effort dos vetoriais
+    # BM25: mesma mecânica dos vetoriais
     for spec in BM25_INDEXES:
+        _ensure_collection(client[spec["db"]], spec["collection"])
         coll = client[spec["db"]][spec["collection"]]
         try:
             if SearchIndexModel is not None:
@@ -880,7 +898,24 @@ def create_vector_indexes(client) -> None:
             if "already exists" in msg or "already defined" in msg or "duplicate" in msg:
                 print(f"  ✓ índice BM25 '{spec['name']}' já existe")
             else:
-                print(f"  ⚠ não criei BM25 '{spec['name']}': {str(exc)[:120]}")
+                failed.append(f"{spec['db']}.{spec['collection']}:{spec['name']}")
+                print(f"  ✗ não criei BM25 '{spec['name']}': {str(exc)[:120]}")
+
+    # Confirmação: o índice tem de APARECER na listagem (pode estar em build;
+    # o preflight espera o READY). Criar "com sucesso" e não listar também é falha.
+    for spec in VECTOR_INDEXES + BM25_INDEXES:
+        key = f"{spec['db']}.{spec['collection']}:{spec['name']}"
+        if key in failed:
+            continue
+        try:
+            names = {i.get("name") for i in client[spec["db"]][spec["collection"]].list_search_indexes()}
+        except Exception as exc:  # noqa: BLE001
+            names = set()
+            print(f"  ⚠ não consegui listar índices de {spec['collection']}: {str(exc)[:120]}")
+        if spec["name"] not in names:
+            failed.append(key)
+            print(f"  ✗ índice '{spec['name']}' não aparece em {spec['db']}.{spec['collection']}")
+    return failed
 
 
 # Coleções de RUNTIME que um reset completo esvazia: conversas, checkpoints do
@@ -1171,10 +1206,14 @@ def main(argv: list[str] | None = None):
           f"agent_traces.at e guardrail_candidates.at ({AUDIT_TTL_DAYS} dias) · "
           f"agent_sessions.updated_at ({SESSION_IDLE_SECONDS // 3600} h de inatividade)")
 
-    print("\nÍndices vetoriais (autoEmbed voyage-4):")
-    create_vector_indexes(client)
+    # probes ANTES dos índices: a coleção turn_probes precisa existir (e ter dado)
     from seed_turn_probes import seed_probes_and_config
     seed_probes_and_config(client[_DB_BRAIN])
+    print("\nÍndices vetoriais (autoEmbed voyage-4):")
+    failed = create_vector_indexes(client)
+    if failed:
+        sys.exit("FALHA: índices obrigatórios ausentes: " + ", ".join(failed)
+                 + "\nO reset NÃO está completo; corrija e rode de novo (o seed é idempotente).")
 
 
 if __name__ == "__main__":

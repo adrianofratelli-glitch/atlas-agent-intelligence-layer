@@ -18,9 +18,13 @@ done
 
 echo "▶ backend FastAPI :$BACKEND_PORT"
 (cd backend && .venv/bin/uvicorn main:app --port "$BACKEND_PORT" &)
-sleep 2
-
-if ! curl -fsS "http://127.0.0.1:$BACKEND_PORT/api/health" >/dev/null 2>&1; then
+# Espera o health (até 30 s): conexão Atlas + aquecimento podem passar de 2 s.
+healthy=0
+for _ in $(seq 1 30); do
+  if curl -fsS "http://127.0.0.1:$BACKEND_PORT/api/health" >/dev/null 2>&1; then healthy=1; break; fi
+  sleep 1
+done
+if [ "$healthy" != 1 ]; then
   echo "Backend did not become healthy on :$BACKEND_PORT."
   exit 1
 fi

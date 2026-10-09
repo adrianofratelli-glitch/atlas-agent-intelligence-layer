@@ -83,7 +83,11 @@ Trocar significaria reimplementar isso fora do banco. Detalhe e ressalvas em
 
 Fatos recuperados entram no prompt entre delimitadores `<fatos_do_cliente>` com instrução
 explícita de ignorar comandos embutidos, e `memory.looks_like_instruction` descarta, de forma
-determinística, qualquer "fato" em formato de instrução que o extrator devolva.
+determinística, qualquer "fato" em formato de instrução que o extrator devolva. A mesma checagem roda
+de novo na leitura (`memory.quarantine`): um fato com formato de ordem gravado por outro caminho
+não chega ao prompt. Sonda independente de 2026-10-08: um documento plantado direto na coleção,
+pedindo um marcador no início da resposta, fazia a resposta começar com o marcador; depois da
+correção, o marcador não aparece.
 
 Por que importa: memória de agente é superfície de ataque. Quem guarda memória num store opaco
 não consegue nem auditar o que foi gravado; aqui o fato é um documento com origem

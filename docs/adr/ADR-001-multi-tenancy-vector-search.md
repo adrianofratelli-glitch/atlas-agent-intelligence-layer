@@ -8,20 +8,20 @@
 PoV precisa servir múltiplos departamentos (`area`: `default` = suporte e-commerce, `financeiro`) e múltiplos usuários no mesmo agente, com garantia de que dado/memória de um departamento/usuário nunca vaze pra outro em cache semântico, guardrails e memória de longo prazo do agente. Carga é pequena (poucos departamentos, poucos usuários, dataset por área abaixo de 10k vetores). Sem requisito de isolamento físico/VPC por tenant.
 
 ## Decisão
-Coleção compartilhada por caso de uso (`semantic_cache`, `guardrail_denylist`, `agent_memory`), isolamento via campos `area` e/ou `user_key` declarados como `filter` no índice Atlas Vector Search autoEmbed (voyage-4). O `$vectorSearch` aplica o filtro durante a busca ANN (pre-filtro nativo) — isolamento garantido pelo índice, não por pós-filtro em código de aplicação. Campo de filtro sempre resolvido do lado autenticado (`require_demo_user`), nunca aceito como input livre.
+Coleção compartilhada por caso de uso (`semantic_cache`, `guardrail_denylist`, `agent_memory`), isolamento via campos `area` e/ou `user_key` declarados como `filter` no índice Atlas Vector Search autoEmbed (voyage-4). O `$vectorSearch` aplica o filtro durante a busca ANN (pré-filtro nativo), em vez de pós-filtrar no código. O índice não é controle de acesso: uma query sem `filter` devolve todos os tenants. O isolamento é a cláusula `filter`, imposta por um construtor único (`db.tenant_vector_stage`, que recusa chave de tenant vazia) e por um teste que barra `$vectorSearch` montado fora dele (`tests/test_tenant_filter.py`). Revisão 2026-10-08. Campo de filtro sempre resolvido do lado autenticado (`require_demo_user`), nunca aceito como input livre.
 
 ## Alternativas consideradas
 | Opção | Prós | Contras | Por que rejeitada |
 |---|---|---|---|
 | Coleção por tenant | Isolamento "parece" mais forte | Zero ganho real de isolamento (auth Atlas é a nível de DB, não de coleção); carga de change streams variável por coleção; complexidade operacional de manter N coleções | Anti-pattern documentado pelo próprio MongoDB para Vector Search multi-tenant |
 | Database por tenant | Isolamento forte de fato (auth a nível de DB) | Overhead operacional alto pra escala do PoV; sem requisito de compliance que justifique | Sem VPC/compliance boundary exigindo isso hoje |
-| Filter field em coleção compartilhada (escolhida) | Isolamento garantido pelo índice na busca ANN; operação simples; escala até 1M tenants pequenos | Depende de filtro sempre presente e vindo de fonte autenticada | — |
+| Filter field em coleção compartilhada (escolhida) | Filtro de tenant aplicado dentro da busca ANN (resultado nunca truncado por pós-filtro); operação simples; escala até 1M tenants pequenos | Depende de filtro sempre presente e vindo de fonte autenticada | — |
 
 ## Evidência
 Índices confirmados em `backend/seed.py` (linhas 365-429): `semantic_cache_vs` (filter: `area`), `guardrail_denylist_vs` (filter: `area`), `agent_memory_vs` (filter: `user_key`, `active`). Pre-filtro nativo confirmado em `cache.py:92` e `memory.py:162`. Defesa adicional em `agent.py:132` (rebind forçado de `user_key` em leitura de `agent_sessions`) e `agent.py:71` (`WRITE_SCOPE` restringe escrita do agente a `support_orders` com `order_id` validado). Nenhum load test formal de isolamento cross-tenant rodado — `[TBD - pendente de teste]`.
 
 ## Consequências
-- Positivas: isolamento garantido no nível do índice (não depende de disciplina de código em todo query path); operação simples (1 coleção por caso de uso, não N); escala natural até 1M tenants pequenos sem redesenho.
+- Positivas: filtro de tenant aplicado dentro da busca ANN e montado num único construtor (`db.tenant_vector_stage`), coberto por teste, em vez de disciplina espalhada por todo query path; operação simples (1 coleção por caso de uso, não N); escala natural até 1M tenants pequenos sem redesenho.
 - Negativas / trade-offs aceitos: sem isolamento físico/VPC entre áreas — se cliente exigir isolamento regulatório forte entre departamentos no futuro (ex: financeiro sob compliance mais rígido), modelo atual não atende sem migração.
 - Reversibilidade: média. Migrar pra coleção-por-tenant depois exige reindexação e migração de dados (MongoDB fornece script de referência), mas não é trivial em produção com dado já acumulado.
 

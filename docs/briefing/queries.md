@@ -25,7 +25,7 @@ Todos usam `indexingMethod: "flat"` (não HNSW) — decisão do ADR-001, risco 1
 | `agent_memory_vs` | `POC.agent_memory` | `fact` | `user_key`, `active` | Memória de longo prazo do agente — retrieval só dos fatos ATIVOS deste usuário |
 | `produtos_vector` (pré-existente, fora do seed) | `POC.produtos_vector` | `descricao` | — | Catálogo de produtos para sugestão de substituto |
 
-O `filter` é campo nativo do índice, não `.filter()` em Python — é o mecanismo central do ADR-001: o `$vectorSearch` só percorre vetores que já passam no filtro de tenant, então isolamento é garantido pelo índice, não por disciplina de código.
+O `filter` usa campos declarados no índice, não `.filter()` em Python: o `$vectorSearch` só percorre vetores que já passam no filtro de tenant. O índice não impõe o filtro (uma query sem ele devolve todos os tenants); quem impõe é `db.tenant_vector_stage`, que recusa montar a busca sem `user_key`/`area` (ADR-001, `tests/test_tenant_filter.py`).
 
 ## 2. Índice Atlas Search BM25 (lexical)
 

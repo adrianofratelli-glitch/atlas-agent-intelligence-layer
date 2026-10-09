@@ -122,6 +122,44 @@ def is_claude(model):
     return model.startswith('claude-')
 
 
+# Capacidades por modelo, sondadas no Grove em 2026-10-08 (mesma chave, mesmo
+# prompt, com e sem o parâmetro): as gerações novas da Anthropic devolvem
+# 400 "`temperature` is deprecated for this model" (idem `top_p`). Enviar o
+# parâmetro quebrava a troca para Sonnet 5.5 e o fallback, que também é 5.5.
+# A config viva (ai_brain.model_config) continua podendo ter temperature: o
+# gateway filtra o que o modelo não aceita, em vez de exigir um doc por modelo.
+SAMPLING_PARAMS = ('temperature', 'top_p', 'top_k')
+MODEL_CAPABILITIES = {
+    'claude-sonnet-4-5': {'sampling': True},
+    'claude-sonnet-4-6': {'sampling': True},
+    'claude-haiku-4-5': {'sampling': True},
+    'claude-opus-4-5': {'sampling': True},
+    'claude-opus-4-8': {'sampling': False},
+    'claude-sonnet-5': {'sampling': False},
+    'claude-sonnet-5-5': {'sampling': False},
+    'claude-opus-5': {'sampling': False},
+    'claude-opus-5-5': {'sampling': False},
+}
+
+
+def capabilities(model):
+    """Capacidades conhecidas; modelo Claude desconhecido NÃO recebe sampling
+    (omitir temperature nunca gera 400; enviá-la a um modelo novo, sim)."""
+    return MODEL_CAPABILITIES.get(model, {'sampling': False})
+
+
+def adapt_params(model, kwargs):
+    """Remove os parâmetros que o modelo não aceita. Devolve (kwargs, removidos)."""
+    if capabilities(model).get('sampling'):
+        return kwargs, []
+    dropped = [k for k in SAMPLING_PARAMS if k in kwargs]
+    return {k: v for k, v in kwargs.items() if k not in SAMPLING_PARAMS}, dropped
+
+
+def _deprecated_param_error(exc):
+    return getattr(exc, 'status_code', None) == 400 and 'deprecated for this model' in str(exc)
+
+
 def model_catalog():
     return [{'model': m, 'provider': 'anthropic' if is_claude(m) else 'openai',
              'priced': m in list_prices() or m in rates()} for m in CATALOG]
@@ -219,7 +257,20 @@ class GatewayClient:
                 if self.native is None:
                     raise ValueError('GROVE_API_KEY + GROVE_ANTHROPIC_BASE_URL são obrigatórios: '
                                      'o LLM só é chamado pelo gateway Grove (sem fallback direto)')
-                response = await self.native.messages.create(model=model, **kwargs)
+                kwargs, dropped = adapt_params(model, kwargs)
+                if dropped:
+                    record['dropped_params'] = dropped
+                try:
+                    response = await self.native.messages.create(model=model, **kwargs)
+                except APIStatusError as exc:
+                    # Rede de segurança para um modelo novo que a tabela ainda
+                    # marca como compatível: uma única repetição sem sampling.
+                    if not _deprecated_param_error(exc) or not any(k in kwargs for k in SAMPLING_PARAMS):
+                        raise
+                    kwargs, dropped = {k: v for k, v in kwargs.items() if k not in SAMPLING_PARAMS}, \
+                        [k for k in SAMPLING_PARAMS if k in kwargs]
+                    record['dropped_params'] = dropped
+                    response = await self.native.messages.create(model=model, **kwargs)
                 usage = response.usage
             else:
                 body = {'model': model, 'messages': convert_messages(kwargs.get('system'), kwargs['messages']),

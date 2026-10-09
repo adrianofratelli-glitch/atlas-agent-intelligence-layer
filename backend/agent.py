@@ -1106,6 +1106,9 @@ async def _run_tool_loop(session, tools, system_static, system_dynamic, user_msg
             emit(
                 phase, "tool_call", actor="mongodb", tool=tu.name,
                 args=tool_input, result=_safe_tool_display(text), is_error=is_error,
+                # negada pela política ANTES do MCP: o trace mostra a tentativa
+                # do modelo, e `denied` diz que ela nunca chegou ao servidor MCP
+                denied=bool(denial),
                 latency_ms=tool_ms, reads=metrics["reads"], writes=metrics["writes"],
             )
             tool_results.append(

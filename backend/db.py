@@ -105,6 +105,36 @@ def poc():
     return get_client()[DB_MAIN]
 
 
+class TenantFilterMissing(ValueError):
+    """Busca vetorial em coleção por tenant sem a chave do tenant no filtro."""
+
+
+def tenant_vector_stage(*, index: str, path: str, query: str, tenant_filter: dict | None,
+                        num_candidates: int, limit: int,
+                        unfiltered_postfilter: bool = False) -> dict:
+    """ÚNICO construtor de `$vectorSearch` sobre coleções por tenant
+    (agent_memory, semantic_cache, guardrail_denylist).
+
+    O índice declara `user_key`/`area`/`active` como campos `filter`: isso torna
+    o pré-filtro eficiente (aplicado DENTRO da busca ANN), mas NÃO é controle de
+    acesso — uma query sem `filter` no mesmo índice devolve vetores de todos os
+    tenants (sonda do juiz, 2026-10-08). O isolamento é a cláusula `filter` da
+    query, e ela nasce aqui: sem chave de tenant preenchida, levanta
+    `TenantFilterMissing` em vez de montar a query. `tests/test_tenant_filter.py`
+    falha se algum módulo do runtime montar `$vectorSearch` por fora desta função.
+
+    `unfiltered_postfilter=True` existe só para o caminho de compatibilidade com
+    índice antigo sem o campo de filtro: o chamador É obrigado a pós-filtrar.
+    """
+    stage = {"index": index, "path": path, "query": query,
+             "numCandidates": num_candidates, "limit": limit}
+    if not unfiltered_postfilter:
+        if not tenant_filter or any(v in (None, "", [], {}) for v in tenant_filter.values()):
+            raise TenantFilterMissing(f"$vectorSearch em {index} sem filtro de tenant")
+        stage["filter"] = tenant_filter
+    return {"$vectorSearch": stage}
+
+
 async def aggregate_list(coll, pipeline, *, length: int, **kwargs) -> list[dict]:
     """PyMongo Async: aggregate() é corrotina → await duas vezes (cursor, depois lista)."""
     cursor = await coll.aggregate(pipeline, **kwargs)

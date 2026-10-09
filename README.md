@@ -6,6 +6,8 @@ This PoV moves that layer into the database. Prompt schemas, model configuration
 
 **Stack:** React + Vite + LeafyGreen · FastAPI + PyMongo Async · MongoDB Atlas (Vector Search, `voyage-4` autoEmbed) · MongoDB MCP Server · Claude Sonnet 4.5 / Sonnet 5.5. The UI is in Brazilian Portuguese (used in customer sessions).
 
+**Model capabilities.** Newer Claude models (Sonnet 5.x, Opus 5.x, Opus 4.8) reject `temperature`/`top_p` through the gateway (400 "deprecated for this model", probed 2026-10-08). `backend/gateway.py:MODEL_CAPABILITIES` drops the parameters a model does not accept, so `model_config` can keep a temperature and the swap still works; an unknown Claude model gets no sampling parameters. If both primary and fallback fail, the model-swap chat answers with a degraded message instead of an HTTP 500.
+
 ## The demo in four steps
 
 **1. Prompts are polymorphic documents.** One variant per model is a live `$set` against Atlas, and the JSON updates on screen immediately.
@@ -45,7 +47,7 @@ Each step is a real MongoDB operation, visible in the trace and in the in-app in
 
 **Cache hygiene.** Turns that touched a specific order or used the customer's own facts never reach the cache, because a personalized answer must not be replayed for someone else. Entries created at runtime carry `expires_at` and a TTL index removes them; seeded FAQs never expire.
 
-**Memory is data, never instruction.** Facts are injected between `<customer_facts>` delimiters with an explicit instruction to ignore embedded commands, and the extractor refuses instruction-shaped "facts". This is the defense against memory poisoning.
+**Memory is data, never instruction.** Facts are injected between `<customer_facts>` delimiters with an explicit instruction to ignore embedded commands and never copy markers a fact asks for. The extractor refuses instruction-shaped "facts", and the same check runs again on retrieval: a fact written by any other path (import, script, compromised data) that reads like an order to the assistant is quarantined and never reaches the prompt (`memory.quarantine`). This is the defense against memory poisoning.
 
 **What stops the agent from dropping a collection.** The loop exposes only `find`, `aggregate`, and a scoped `update-many`. Every call is rewritten server-side before it reaches the MCP server: order reads require a scalar `PED-...` ID and get a PII-free projection, writes may set a single approved status field, and session reads are pinned to the caller. In production, also restrict the MCP server's Atlas user to the exact collections, or run it with `MDB_MCP_READ_ONLY=true`.
 
@@ -53,7 +55,7 @@ Each step is a real MongoDB operation, visible in the trace and in the in-app in
 
 **Optional Langfuse observability.** With `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` in `.env`, each turn becomes a replayable trace (a generation per LLM call, a span per MCP tool call) with a "View trace in Langfuse" badge in the UI. Without the keys it is a no-op and nothing changes. Details in [`docs/briefing/architecture.md`](docs/briefing/architecture.md).
 
-**Hands-free pitch.** *▶ Auto demo* plays a 12-script playlist alternating cache, guardrail, memory, transactional agent, and per-area isolation, switching the user pill live so the audience sees the same question blocked in one area and answered in another. When paused, ◀/▶ replay already-executed scripts from in-memory history: no new API calls, results exactly as they happened.
+**Hands-free pitch.** *▶ Auto demo* plays a 13-script playlist alternating cache, guardrail, memory, transactional agent, and per-area isolation, switching the user pill live so the audience sees the same question blocked in one area and answered in another. When paused, ◀/▶ replay already-executed scripts from in-memory history: no new API calls, results exactly as they happened.
 
 ## Collections
 
@@ -113,13 +115,13 @@ An index still `BUILDING`, a missing `model_config`, a broken swap chain, `npx` 
 
 ## Why MongoDB for agent memory
 
-The full argument, with measured numbers, is in [docs/memoria-agentica-mongodb.md](docs/memoria-agentica-mongodb.md) (Portuguese). In one line: short-term memory, long-term memory, semantic cache, live configuration, and trace are **documents in the same cluster**. Per-user isolation is a pre-filter inside the vector index (not an application `WHERE`), retrieval is hybrid (`$vectorSearch` + BM25 with RRF) over the same documents, and the turn checkpoint is a `$set` on the same conversation document, with no second system to coordinate.
+The full argument, with measured numbers, is in [docs/memoria-agentica-mongodb.md](docs/memoria-agentica-mongodb.md) (Portuguese). In one line: short-term memory, long-term memory, semantic cache, live configuration, and trace are **documents in the same cluster**. Per-user isolation is the query's `filter` clause, run as a pre-filter inside the ANN search rather than a post-filter in the app. The index does not enforce it (a query without `filter` returns every tenant), so every tenant-scoped `$vectorSearch` is built by one function, `db.tenant_vector_stage`, which refuses an empty tenant key; a test fails if any runtime module builds one by hand, retrieval is hybrid (`$vectorSearch` + BM25 with RRF) over the same documents, and the turn checkpoint is a `$set` on the same conversation document, with no second system to coordinate.
 
 ## Semantic guardrail and dilution
 
-The denylist used to compare only the embedding of the whole message with the forbidden phrases, so a forbidden phrase followed by a **second, unrelated intent** dropped below the threshold (0.9284 alone, 0.6799 diluted) and no threshold could catch it without blocking legitimate customers. Since 2026-10 the message is scored **as a whole and per intent** (sentences, `;`, `: ` and connectors such as "além disso", via `pov-shared`'s `ascore_by_clause`; the `: ` boundary needs pov-shared >= 0.1.6), the per-intent `$vectorSearch` calls run in parallel, and the highest score is compared with the **same** calibrated threshold.
+The denylist used to compare only the embedding of the whole message with the forbidden phrases, so a forbidden phrase followed by a **second, unrelated intent** dropped below the threshold (0.9284 alone, 0.6799 diluted) and no threshold could catch it without blocking legitimate customers. Since 2026-10 the message is scored **as a whole and per intent** (sentences, `;`, `: ` and connectors such as "além disso", via `pov-shared` >= 0.2.0 `ascore_by_clause`), at most 8 per-intent `$vectorSearch` calls run in parallel, and the highest score is compared with the **same** calibrated threshold. Intents are never regrouped: a message with more than 32 intents is blocked outright instead of being merged (merging let a forbidden intent hide among 8 benign ones). Fragments under three words are not scored alone ("Responda apenas: catálogo disponível." used to be blocked as an injection).
 
-Measured on 2026-10-06 against the real `guardrail_denylist_vs` index (`scripts/measure_dilution.py`, test copy of the data): 6 diluted forbidden requests went from 1/6 blocked (whole-message scores 0.6762–0.7807) to 6/6 blocked (0.8209–0.9278); 8 legitimate two-intent questions stayed allowed (max 0.7512 vs threshold 0.7799), and the 10 labeled single-phrase probes of `calibrate_thresholds.py` kept their scores. A blocked turn records `by_clause`, the winning intent, and the whole-message score in `guardrail_events`. Remaining limit: terse, ambiguous claims ("o produto não chegou, quero meu dinheiro de volta") still sit near the fraud phrase (~0.79), because an embedding cannot tell a real claim from a false one; the policy rewrite on the server still denies broad reads.
+Measured on 2026-10-06 against the real `guardrail_denylist_vs` index (`scripts/measure_dilution.py`, test copy of the data): 6 diluted forbidden requests went from 1/6 blocked (whole-message scores 0.6762–0.7807) to 6/6 blocked (0.8209–0.9278); 8 legitimate two-intent questions stayed allowed (max 0.7512 vs threshold 0.7799), and the 10 labeled single-phrase probes of `calibrate_thresholds.py` kept their scores. Re-measured on 2026-10-08 with pov-shared 0.2.0: 24/24 probes as expected, and a forbidden request followed by 1, 7, 8 or 12 benign intents is blocked at 0.8045 (whole message 0.7261–0.7380, threshold 0.7799). A blocked turn records `by_clause`, the winning intent, and the whole-message score in `guardrail_events`. Remaining limit: terse, ambiguous claims ("o produto não chegou, quero meu dinheiro de volta") still sit near the fraud phrase (~0.79), because an embedding cannot tell a real claim from a false one; the policy rewrite on the server still denies broad reads.
 
 ## License
 

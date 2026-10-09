@@ -174,6 +174,7 @@ export default function ModelSwap({ state, setState }) {
                     </span>
                     {m.meta.route === 'fallback' && <Badge variant="red">fallback</Badge>}
                     {m.meta.route === 'cache' && <Badge variant="green">cache semântico</Badge>}
+                    {m.meta.route === 'degraded' && <Badge variant="yellow">modelo indisponível</Badge>}
                   </div>
                 )}
               </div>

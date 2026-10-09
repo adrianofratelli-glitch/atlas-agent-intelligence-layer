@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 (2026-10-08)
+
+- Model swap to Sonnet 5.5 (and the Sonnet 5.5 fallback) no longer fails: a per-model capability table drops `temperature`/`top_p` for models that reject them; one retry without sampling if a new model returns that 400. Quick-chat degrades with a message instead of HTTP 500, and the UI maps HTTP status to readable text.
+- Anti-dilution moved to pov-shared 0.2.0: every intent is scored (no regrouping), more than 32 intents blocks, an all-NaN score marks the layer unavailable, partial scoring blocks fail-closed areas. A forbidden request with 8 or 12 benign intents appended is now blocked. Two-word fragments are no longer scored alone (false positive fixed).
+- Retrieved memory that reads like an instruction is quarantined before the prompt, not only at extraction; format orders ("write exactly X at the start") count as instructions.
+- Tenant isolation: every tenant-scoped `$vectorSearch` goes through `db.tenant_vector_stage`, which refuses an empty tenant key; the thesis no longer claims the index makes a missing filter impossible.
+- `seed.py` creates each collection before its search index and exits non-zero if a required index is missing (first reset on an empty database used to exit 0 without `turn_probes_vs`). `scripts/preflight.sh` is executable in git.
+- Live adversarial probe tolerates the benign MCP teardown race only after every check ran. Visual baseline of the model tab refreshed.
+
 ## 1.1.0 (2026-10-06)
 
 - Semantic guardrail scores the whole message and each intent (same threshold): diluted forbidden requests 1/6 → 6/6 blocked, 0/8 false positives on composite questions (`backend/scripts/measure_dilution.py`).

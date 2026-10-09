@@ -622,11 +622,32 @@ async def quick_chat(body: QuickChatBody, request: Request):
             "cache": cached,
         }
     history = await _quick_chat_history(body.history, area)
-    result = await call_with_fallback(
-        system="Você é um assistente de e-commerce. Responda em português, em poucas frases.",
-        messages=history + [{"role": "user", "content": masked}],
-        area=area,
-    )
+    try:
+        result = await call_with_fallback(
+            system="Você é um assistente de e-commerce. Responda em português, em poucas frases.",
+            messages=history + [{"role": "user", "content": masked}],
+            area=area,
+        )
+    except SafeQueryError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — primário E fallback falharam
+        # Degrada com mensagem, nunca com 500 cru: a aba de troca de modelo é
+        # ao vivo, e o cliente precisa ver QUE o modelo falhou e o que fazer.
+        logger.warning("quick-chat degradado: %s: %s", type(exc).__name__, exc)
+        observability.metrics.bump("llm_degraded")
+        return {
+            "text": ("Os modelos configurados (primário e fallback) não responderam agora. "
+                     "Tente de novo ou troque o modelo primário na lista acima."),
+            "model": "indisponível",
+            "route": "degraded",
+            "degraded": True,
+            "error": {"kind": "llm_indisponivel", "type": type(exc).__name__,
+                      "status": getattr(exc, "status_code", None)},
+            "latency_ms": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache": cached,
+        }
     # PII na saída mascarada aqui também — mesma regra do agente
     guard_out = await guardrails.check_output(result["text"], identity, "quick-chat", area)
     result["text"] = guard_out["text"]

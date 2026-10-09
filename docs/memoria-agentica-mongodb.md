@@ -22,15 +22,27 @@ vivem na mesma transação, no mesmo documento e na mesma consulta**.
 
 ## Os cinco argumentos, com a medição
 
-### 1. Isolamento multi-tenant é PRÉ-FILTRO do índice, não `WHERE` da aplicação
+### 1. Isolamento multi-tenant: o filtro da query é imposto num ponto só e roda DENTRO da busca ANN
 
 `user_key`, `area` e `active` são campos do tipo `filter` **dentro** dos índices vetoriais
-(`agent_memory_vs`, `semantic_cache_vs`, `guardrail_denylist_vs`). O `$vectorSearch` só percorre
-vetores que aquele usuário pode ver — o isolamento acontece na busca ANN, não depois dela.
+(`agent_memory_vs`, `semantic_cache_vs`, `guardrail_denylist_vs`). Isso permite que a cláusula
+`filter` do `$vectorSearch` seja um **pré-filtro**: a busca ANN só percorre vetores daquele tenant,
+em vez de buscar o top-k global e descartar depois (o que pode devolver resultado vazio ou
+truncado).
 
-Por que importa: num banco vetorial separado, o filtro por tenant é responsabilidade do código
-que chama. Um `if` esquecido vira vazamento entre clientes. Aqui, esquecer é impossível: o índice
-não devolve o que não é do tenant.
+O que o índice **não** faz é autorização: uma query sem `filter` no mesmo índice é aceita e devolve
+vetores de todos os tenants (sonda independente de 2026-10-08). O isolamento é a cláusula `filter`
+da query. Por isso ela é imposta no código, num único lugar: `backend/db.py:tenant_vector_stage`
+monta todo `$vectorSearch` sobre coleção por tenant e levanta `TenantFilterMissing` se a chave do
+tenant vier vazia; `memory._vector_candidates`, `cache.lookup` e `policy_guardrails._denylist_top`
+usam essa função, e `backend/tests/test_tenant_filter.py` falha se algum módulo do runtime montar
+`$vectorSearch` à mão. A chave vem do lado do servidor (`profiles.require_demo_user`, ou o JWT com
+`AUTH_REQUIRED=1`), nunca do texto do modelo.
+
+Por que importa: num banco vetorial à parte, o filtro de tenant também é responsabilidade de quem
+chama a query. A diferença aqui não é que esquecer seja impossível. É que existe um único
+construtor de query que recusa montar a busca sem a chave, coberto por teste, e o filtro roda dentro
+do índice, com o mesmo custo de uma busca sem filtro.
 
 Medido: `backend/tests/test_policies.py` (`CacheIsolationFallbackTests`), e o eval live com
 **28 casos e `cache_leaks: 0`** (`eval/reports/live-2026-09-22.json`).
@@ -71,7 +83,11 @@ Trocar significaria reimplementar isso fora do banco. Detalhe e ressalvas em
 
 Fatos recuperados entram no prompt entre delimitadores `<fatos_do_cliente>` com instrução
 explícita de ignorar comandos embutidos, e `memory.looks_like_instruction` descarta, de forma
-determinística, qualquer "fato" em formato de instrução que o extrator devolva.
+determinística, qualquer "fato" em formato de instrução que o extrator devolva. A mesma checagem roda
+de novo na leitura (`memory.quarantine`): um fato com formato de ordem gravado por outro caminho
+não chega ao prompt. Sonda independente de 2026-10-08: um documento plantado direto na coleção,
+pedindo um marcador no início da resposta, fazia a resposta começar com o marcador; depois da
+correção, o marcador não aparece.
 
 Por que importa: memória de agente é superfície de ataque. Quem guarda memória num store opaco
 não consegue nem auditar o que foi gravado; aqui o fato é um documento com origem

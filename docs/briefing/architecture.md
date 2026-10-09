@@ -76,7 +76,7 @@ Ver `docs/adr/`. Para o "porquê" de cada uma, leia o ADR; aqui só o resumo de 
 1. **Superfície de ferramentas do agente**: só `find`, `aggregate`, `update-many`. Nenhum delete/drop/count/schema chega ao modelo.
 2. **Toda chamada é reescrita no servidor, não só validada** — o dicionário de input é limpo e remontado inteiro (`_read_denial`/`_write_denial` em `agent.py`), então opção extra que o modelo inventar (sort, limit, collation, upsert) nunca sobrevive.
 3. **Escrita com escopo de collection E de filtro**: `update-many` só em `POC.support_orders`, e só com um `order_id` escalar específico + status de uma allowlist. Memória/sessões são geridas pela plataforma, nunca pelo agente.
-4. **Isolamento é pré-filtro nativo no índice**, não pós-filtro na aplicação (ver ADR-001).
+4. **Isolamento é a cláusula `filter` da query, aplicada como pré-filtro nativo dentro da busca ANN** (ver ADR-001). O índice não autoriza nada sozinho: o filtro é imposto por `db.tenant_vector_stage`, único construtor de `$vectorSearch` em coleção por tenant, e `tests/test_tenant_filter.py` barra query montada por fora.
 5. **Memória é dado, nunca instrução** — fatos injetados entre delimitadores `<fatos_do_cliente>`, com instrução explícita de ignorar comandos embutidos.
 6. **PII mascarada antes de LLM/cache/memória/trace**, redigida de novo na saída.
 7. **Budgets de caractere são travas de segurança, não estimativa de billing** — a contagem real de token vem do usage do provedor.

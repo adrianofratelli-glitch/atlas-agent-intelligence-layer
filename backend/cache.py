@@ -27,7 +27,7 @@ gracefully to an exact normalized-text match, so the demo never crashes.
 import time
 from datetime import datetime, timedelta, timezone
 
-from db import MAX_TIME_MS, aggregate_list, ai_brain, poc, safe_query
+from db import MAX_TIME_MS, aggregate_list, ai_brain, poc, safe_query, tenant_vector_stage
 
 CACHE_COLLECTION = "semantic_cache"
 CACHE_INDEX = "semantic_cache_vs"      # Atlas Vector Search index (autoEmbed on `question`)
@@ -90,19 +90,13 @@ async def lookup(question: str, area: str = "default") -> dict:
     t0 = time.perf_counter()
 
     def _pipeline(with_filter: bool) -> list[dict]:
-        stage = {
-            "index": CACHE_INDEX,
-            "path": CACHE_PATH,
-            "query": question,
-            "numCandidates": 50,
-            # Sem filtro nativo o pós-filtro app-side descarta candidatos de
-            # outras áreas — 25 candidatos evitam resultado vazio com cache grande.
-            "limit": 1 if with_filter else 25,
-        }
-        if with_filter:
-            stage["filter"] = {"area": {"$in": ["global", area]}}
+        # Sem filtro (índice antigo sem o campo `area`) o pós-filtro app-side
+        # descarta candidatos de outras áreas — 25 evitam resultado vazio.
         return [
-            {"$vectorSearch": stage},
+            tenant_vector_stage(index=CACHE_INDEX, path=CACHE_PATH, query=question,
+                                tenant_filter={"area": {"$in": ["global", area]}},
+                                num_candidates=50, limit=1 if with_filter else 25,
+                                unfiltered_postfilter=not with_filter),
             {"$project": {"question": 1, "answer": 1, "model": 1, "area": 1,
                           "score": {"$meta": "vectorSearchScore"}}},
         ]

@@ -40,12 +40,15 @@ def seed_probes_and_config(db) -> None:
 
 
 def main() -> None:
-    from seed import _vector_index_definition
+    from db import DB_BRAIN, DB_MAIN
+    from seed import _ensure_collection, _vector_index_definition, refuse_demo_db
 
     uri = os.getenv("MONGODB_URI")
     if not uri:
         sys.exit("MONGODB_URI não definida.")
-    db = MongoClient(uri, serverSelectionTimeoutMS=15_000)["ai_brain"]
+    refuse_demo_db(DB_MAIN, DB_BRAIN)
+    db = MongoClient(uri, serverSelectionTimeoutMS=15_000)[DB_BRAIN]
+    _ensure_collection(db, tc.PROBES_COLLECTION)
     probes = db[tc.PROBES_COLLECTION]
     seed_probes_and_config(db)
 
@@ -58,7 +61,7 @@ def main() -> None:
         if "already" in str(exc).lower():
             print(f"✓ índice '{tc.PROBES_INDEX}' já existe")
         else:
-            print(f"⚠ não criei o índice: {str(exc)[:160]}\n  definição: {definition}")
+            sys.exit(f"✗ não criei o índice: {str(exc)[:160]}\n  definição: {definition}")
 
 
 if __name__ == "__main__":

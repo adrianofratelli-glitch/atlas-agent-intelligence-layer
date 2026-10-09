@@ -23,6 +23,9 @@ echo "==> backend/.venv (runtime + pov-shared[tracing])"
 [ -d backend/.venv ] || uv venv backend/.venv
 uv pip install --python backend/.venv/bin/python -r backend/requirements.txt
 uv pip install --python backend/.venv/bin/python -e "../_shared[tracing]"
+# pov-shared >= 0.2.0 pede openinference-instrumentation-anthropic >= 2.1.7 sem teto;
+# a 3.x é major nova e não foi validada aqui: fixa a 2.1.7 testada.
+uv pip install --python backend/.venv/bin/python "openinference-instrumentation-anthropic==2.1.7"
 uv pip check --python backend/.venv/bin/python
 
 if [ "${1:-}" = "--runtime" ]; then

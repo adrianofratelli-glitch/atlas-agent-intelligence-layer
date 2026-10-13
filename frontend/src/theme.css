@@ -1251,3 +1251,11 @@ footer.app-footer p {
 .pov-execution-call-meta { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; color: #b8c4c8; font-size: 12px; font-variant-numeric: tabular-nums; }
 .pov-execution-body .pov-execution-disclaimer { margin: 12px 0 0; font-size: 11px; color: #b8c4c8; }
 @media (max-width: 600px) { .pov-execution > summary { gap: 12px; padding: 12px; } .pov-execution-title { flex-basis: 100%; } .pov-execution-mode { max-width: 100%; } .pov-execution-toggle { margin-left: auto; } .pov-execution-body { padding: 12px; } }
+
+/* links e negrito das respostas do LLM (components/RichText.jsx) */
+.chat-msg a, .thought-text a, .reason-text a {
+  color: var(--accent);
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+.chat-msg strong, .thought-text strong, .reason-text strong { font-weight: 700; }

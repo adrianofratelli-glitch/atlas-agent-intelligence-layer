@@ -66,5 +66,26 @@ class BudgetPolicyTests(unittest.TestCase):
                 self.assertNotIn("filter", pipeline[0]["$vectorSearch"])
 
 
+
+class MessageBudgetTests(unittest.TestCase):
+    """Teto dito na mensagem vira filtro (medido: "até 300 reais" trazia itens acima)."""
+
+    def test_cap_with_currency_is_parsed(self):
+        import memory
+        self.assertEqual(memory.budget_from_message("caixa de som até 300 reais"), 300.0)
+        self.assertEqual(memory.budget_from_message("no máximo R$ 1.200,00"), 1200.0)
+        self.assertEqual(memory.budget_from_message("abaixo de R$ 499,90"), 499.9)
+
+    def test_smallest_cap_wins(self):
+        import memory
+        self.assertEqual(memory.budget_from_message("até 150 reais ou no máximo R$ 120"), 120.0)
+
+    def test_numbers_that_are_not_a_cap_are_ignored(self):
+        import memory
+        for text in ("uma caixa de 300 reais", "quero até 2 fones", "troca em até 30 dias",
+                     "fone até 300"):
+            self.assertIsNone(memory.budget_from_message(text), text)
+
+
 if __name__ == "__main__":
     unittest.main()

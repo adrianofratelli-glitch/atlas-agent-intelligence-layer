@@ -136,6 +136,31 @@ def get_mcp_session(app: FastAPI) -> ClientSession | None:
     return None
 
 
+async def _warm_atlas() -> None:
+    """Abre conexões e toca as coleções lidas em todo turno, em segundo plano.
+
+    Medido em 2026-10-13: o primeiro turno depois do restart levava ~12 s (4 s só no nó
+    de identidade, abrindo conexão/TLS com o Atlas) contra ~5 s dos seguintes. Leituras
+    concorrentes forçam o pool a abrir várias conexões antes do primeiro cliente. Fail-open:
+    falha aqui só é logada; o turno real repete a leitura de qualquer forma.
+    """
+    try:
+        brain, main_db = ai_brain(), poc()
+        await asyncio.gather(
+            get_client().admin.command("ping"),
+            main_db["app_users"].find_one({}, {"_id": 1}),
+            brain["model_config"].find_one({"active": True}, {"_id": 1}),
+            brain["area_profiles"].find_one({}, {"_id": 1}),
+            brain["tool_registry"].find_one({}, {"_id": 1}),
+            brain["cache_config"].find_one({}, {"_id": 1}),
+            brain["guardrail_policies"].find_one({}, {"_id": 1}),
+            main_db["semantic_cache"].find_one({}, {"_id": 1}),
+        )
+        logger.info("Atlas aquecido (pool de conexões aberto)")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("aquecimento do Atlas falhou: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Sobe o supervisor da sessão MCP. Se o MCP não subir (npx ausente, Atlas
@@ -160,11 +185,12 @@ async def lifespan(app: FastAPI):
         for slot in range(MCP_POOL_SIZE)
     ]
     janitor_task = asyncio.create_task(_rate_windows_janitor(stop))
+    warm_task = asyncio.create_task(_warm_atlas())
     try:
         yield
     finally:
         stop.set()
-        await asyncio.gather(*pool_tasks, janitor_task)
+        await asyncio.gather(*pool_tasks, janitor_task, warm_task)
 
 
 app = FastAPI(title="MongoDB Intelligence Layer", lifespan=lifespan)

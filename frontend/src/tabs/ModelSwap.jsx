@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import RichText from '../components/RichText.jsx';
 import Badge from '@leafygreen-ui/badge';
 import Banner from '@leafygreen-ui/banner';
 import Button from '@leafygreen-ui/button';
@@ -164,7 +165,9 @@ export default function ModelSwap({ state, setState }) {
             )}
             {messages.map((m, i) => (
               <div key={i}>
-                <div className={`chat-msg ${m.role}`}>{m.text}</div>
+                <div className={`chat-msg ${m.role}`}>
+                  {m.role === 'user' ? m.text : <RichText text={m.text} />}
+                </div>
                 {m.meta && (
                   <div className="chat-meta">
                     <Badge variant={modelBadge(m.meta.model)}>{m.meta.model}</Badge>

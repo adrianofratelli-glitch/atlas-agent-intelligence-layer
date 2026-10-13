@@ -153,6 +153,61 @@ def _clean_budget(value) -> float | None:
     return value if math.isfinite(value) and value > 0 else None
 
 
+# Teto de preço dito NA MENSAGEM ("até 300 reais", "no máximo R$ 1.200,00"). Medido em
+# 2026-10-13: "me indica uma caixa de som até 300 reais" trazia itens acima do teto, porque só
+# o orçamento gravado na memória virava filtro. Sem `re`, como o resto deste módulo: palavra de
+# teto seguida, em até 3 tokens, de um valor; "uma caixa de 300 reais" (sem teto) não conta.
+_BUDGET_CUES = (("ate",), ("no", "maximo"), ("maximo",), ("abaixo", "de"), ("menos", "de"),
+                ("teto", "de"), ("limite", "de"))
+
+
+def _brl_number(token: str) -> float | None:
+    token = token.removeprefix("r$").strip(".,;:!?)")
+    if not token or not token[0].isdigit():
+        return None
+    if "," in token:  # 1.200,50 → 1200.50
+        token = token.replace(".", "").replace(",", ".")
+    elif token.count(".") == 1 and len(token.split(".")[1]) == 3:  # 1.200 → 1200
+        token = token.replace(".", "")
+    try:
+        return _clean_budget(float(token))
+    except ValueError:
+        return None
+
+
+def _budget_tokens(text: str) -> list[str]:
+    """Como `_fold`, mas preserva `.` `,` `$` (valores em reais) e cola o "r$" no número."""
+    decomposed = unicodedata.normalize("NFKD", (text or "").lower())
+    base = "".join(c for c in decomposed if not unicodedata.combining(c))
+    kept = "".join(c if c.isalnum() or c in " .,$" else " " for c in base)
+    return kept.replace("r$ ", "r$").split()
+
+
+def budget_from_message(user_message: str) -> float | None:
+    """Menor teto de preço explícito na mensagem, ou None.
+
+    Exige marca de moeda ("R$" antes ou "reais"/"real" depois): "até 2 fones" ou "até 30
+    dias" não são orçamento. Sem marca, nada muda — o filtro só fica mais estrito quando o
+    cliente disse um valor em reais.
+    """
+    tokens = _budget_tokens(user_message)
+    found = []
+    for i in range(len(tokens)):
+        for cue in _BUDGET_CUES:
+            if tuple(t.strip(".,") for t in tokens[i:i + len(cue)]) != cue:
+                continue
+            window = tokens[i + len(cue):i + len(cue) + 3]
+            for j, tok in enumerate(window):
+                value = _brl_number(tok)
+                if value is None:
+                    continue
+                after = window[j + 1].strip(".,") if j + 1 < len(window) else ""
+                if tok.startswith("r$") or after in ("reais", "real"):
+                    found.append(value)
+                break
+    return min(found) if found else None
+
+
 async def active_budget(user_key: str) -> float | None:
     """Limite de preço ativo do cliente (R$), ou None. Lido pelo servidor para
     filtrar o catálogo — é dado estruturado do fato, não texto do prompt."""

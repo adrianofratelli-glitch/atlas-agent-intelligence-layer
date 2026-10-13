@@ -25,6 +25,7 @@ gracefully to an exact normalized-text match, so the demo never crashes.
 """
 
 import time
+import asyncio
 from datetime import datetime, timedelta, timezone
 
 from db import MAX_TIME_MS, aggregate_list, ai_brain, poc, safe_query, tenant_vector_stage
@@ -99,9 +100,17 @@ async def lookup(question: str, area: str = "default",
     top candidate's score, so the UI can show "how close" it was.
     """
     coll = poc()[CACHE_COLLECTION]
-    cfg = await get_config()
-    threshold = cfg["hit_threshold"]
     t0 = time.perf_counter()
+
+    async def _exact_or_empty() -> list[dict]:
+        try:
+            return await _exact_fallback(coll, question, area)
+        except Exception:  # noqa: BLE001 — o caminho vetorial segue valendo
+            return []
+
+    # Config e match exato não dependem um do outro: em paralelo (~250 ms por ida e volta).
+    cfg, exact_docs = await asyncio.gather(get_config(), _exact_or_empty())
+    threshold = cfg["hit_threshold"]
 
     def _pipeline(with_filter: bool) -> list[dict]:
         # Sem filtro (índice antigo sem o campo `area`) o pós-filtro app-side
@@ -117,12 +126,8 @@ async def lookup(question: str, area: str = "default",
 
     # Mesma pergunta (texto normalizado) já respondida: hit direto, sem embedding
     # nem $vectorSearch — e sem esperar o índice vetorial indexar a entrada nova.
-    try:
-        docs, mode = await _exact_fallback(coll, question, area), "exact-recent"
-    except Exception:  # noqa: BLE001 — o caminho vetorial segue valendo
-        docs = []
-    if docs and _capability_ok(docs[0], web_enabled):
-        return await _finish_exact(coll, docs[0], threshold, t0)
+    if exact_docs and _capability_ok(exact_docs[0], web_enabled):
+        return await _finish_exact(coll, exact_docs[0], threshold, t0)
 
     try:
         docs = await aggregate_list(coll, _pipeline(True), length=1, maxTimeMS=MAX_TIME_MS)

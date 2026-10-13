@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import RichText from '../components/RichText.jsx';
 import Badge from '@leafygreen-ui/badge';
 import Banner from '@leafygreen-ui/banner';
 import Button from '@leafygreen-ui/button';
@@ -632,7 +633,7 @@ export default function Agent({ state, setState }) {
                   namespace={opTarget(e.args)}
                   query={e.args}
                   explain={e.explain}
-                  label="Ver chamada MCP / query executada"
+                  label={e.args?.provider ? 'Ver chamada / consulta executada' : 'Ver chamada MCP / query executada'}
                 />
               </div>
             ))}
@@ -652,7 +653,7 @@ export default function Agent({ state, setState }) {
             {reasonings.length === 0 && <div className="dim">O raciocínio aparece na fase "Raciocinar".</div>}
             {reasonings.map((e, i) => (
               <div key={i} className={`reason-item ${current === e ? 'pulse' : ''}`}>
-                <div className="reason-text">{e.text}</div>
+                <div className="reason-text"><RichText text={e.text} /></div>
                 <div className="reason-meta mono dim">{e.tokens} tokens · {e.latency_ms} ms</div>
               </div>
             ))}
@@ -662,12 +663,14 @@ export default function Agent({ state, setState }) {
             <div className="col-head"><span className="agent-emoji">🤖</span> Agente</div>
             <div className="thought-box">
               <div className="thought-label mono">💭 Pensamento atual</div>
-              <div className="thought-text">{thought ?? 'Aguardando entrada do usuário…'}</div>
+              <div className="thought-text">{thought ? <RichText text={thought} /> : 'Aguardando entrada do usuário…'}</div>
             </div>
             <div className="agent-chat">
               {turns.length === 0 && <div className="dim">Sem mensagens ainda. Experimente uma sugestão abaixo.</div>}
               {turns.map((t, i) => (
-                <div key={i} className={`chat-msg ${t.role === 'user' ? 'user' : 'assistant'}`}>{t.text}</div>
+                <div key={i} className={`chat-msg ${t.role === 'user' ? 'user' : 'assistant'}`}>
+                  {t.role === 'user' ? t.text : <RichText text={t.text} />}
+                </div>
               ))}
               {busy && (
                 <div className="row"><div className="spinner" /> <span className="dim">{liveStatus ?? 'o agente está trabalhando…'}</span></div>

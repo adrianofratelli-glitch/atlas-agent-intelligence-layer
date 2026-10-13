@@ -135,12 +135,14 @@ async def n_identity(state: TurnState, config) -> dict:
     metrics = state["metrics"]
     user = await profiles.require_demo_user(user_key)
     area = user.get("area", profiles.DEFAULT_AREA)
-    agent_model, agent_fallback_model = await agent._resolve_agent_model(area)
-    area_profile = await profiles.get_area_profile(area)
+    # As três leituras só dependem da área: em paralelo. Medido em 2026-10-13, cada ida e
+    # volta ao Atlas custa ~250 ms daqui; em sequência este nó levava ~1,3 s.
     # Registro de ferramentas (ai_brain.tool_registry): decide, por área, se a busca
     # web existe neste turno. Lido antes do roteamento: com a web ligada, pergunta fora
     # do domínio da loja vai para o agente (que busca), não para o redirecionamento fixo.
-    web_cfg = await web_search.get_config(area)
+    (agent_model, agent_fallback_model), area_profile, web_cfg = await asyncio.gather(
+        agent._resolve_agent_model(area), profiles.get_area_profile(area),
+        web_search.get_config(area))
     metrics["reads"] += 3
     profile_info = {"area": area, "label": area_profile.get("label", area),
                      "user_key": user_key, "user_name": user.get("name", user_key)}
@@ -341,7 +343,15 @@ async def n_run_pipeline(state: TurnState, config) -> dict:
         memory.active_budget(user_key),
     )
     metrics["reads"] += 1
-    if budget_brl:
+    # Teto dito na própria mensagem também vira filtro de servidor; vale o MENOR dos dois.
+    message_budget = memory.budget_from_message(user_msg)
+    if message_budget and (not budget_brl or message_budget < budget_brl):
+        budget_brl = message_budget
+        _emit(ctx, trace, "retrieve", "message", actor="agent",
+              text=f"Teto de preço dito nesta mensagem: R$ {budget_brl:,.2f}. O servidor "
+                   "aplica esse teto como pré-filtro no catálogo — o modelo não consegue "
+                   "ignorá-lo.")
+    elif budget_brl:
         _emit(ctx, trace, "retrieve", "message", actor="mongodb",
               text=f"Orçamento do cliente (memória de longo prazo): R$ {budget_brl:,.2f}. "
                    "O servidor aplica esse teto como $match no catálogo — "

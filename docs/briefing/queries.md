@@ -229,6 +229,21 @@ Todos em `backend/seed.py:1076-1104`.
 | `agent_traces.at` (`ttl_at_30d`) | `2592000` (30 dias) | Trace de cada turno do agente | **ADR-003** (mesmo padrão) |
 | `guardrail_candidates.at` (`ttl_at_30d`) | `2592000` (30 dias) | Fila de near-miss pendente de revisão | **ADR-003** |
 | `admin_audit.at` (`ttl_at_30d`) | `2592000` (30 dias) | Auditoria de ação administrativa (reset, review) | **ADR-003** (mesmo padrão) |
+| `web_search_cache.expires_at` (`ttl_expires_at`) | `0` (data em `expires_at`, 6 h depois da busca por padrão) | Resultado de busca web; repetir a consulta normalizada não gasta crédito do provedor | **ADR-007** |
+| `external_calls.at` (`ttl_at_30d`) | `2592000` (30 dias) | Auditoria de cada chamada externa (consulta mascarada, URLs, latência, cache hit, cota) | **ADR-007** |
+
+Esses dois índices são criados por `backend/seed_tool_registry.py` (também chamado por `seed.py`), junto com `external_calls {area: 1, at: -1}`.
+
+### Cota mensal da busca web — `backend/web_search.py:_reserve_credit`
+
+```python
+coll.find_one_and_update(
+    {"_id": "2026-10", "used": {"$lt": limit}},
+    {"$inc": {"used": 1}, "$set": {"limit": limit, "updated_at": now}},
+    upsert=True, return_document=ReturnDocument.AFTER)
+```
+
+Atômico: com o mês no teto, o filtro não casa, o upsert colide no `_id` (`DuplicateKeyError`) e a busca é recusada sem chamar o provedor.
 
 ## 8. Índices regulares (não-vetoriais)
 

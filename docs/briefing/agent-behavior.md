@@ -44,7 +44,34 @@ WRITE_TOOLS = {"update-many"}
 ALLOWED_TOOLS = READ_TOOLS | WRITE_TOOLS
 ```
 
-Só isso chega ao modelo — nenhum delete/drop/count/schema. E cada chamada é **reescrita** (não só validada) antes de ir ao MCP: `_read_denial` (agent.py:280-366) e `_write_denial` (agent.py:230-257) limpam o dicionário de input inteiro e remontam com os parâmetros que sobrevivem à política (`order_id` escalar, `owner_user_key` amarrado, status de uma allowlist, pipeline `$vectorSearch`/`$graphLookup` canônico). Detalhe completo em `queries.md` e `architecture.md`.
+Só isso chega ao modelo pelo MCP — nenhum delete/drop/count/schema. Fora do MCP existem
+mais duas, despachadas em `_run_tool_loop` (ver "Ferramentas fora do MCP" abaixo). E cada chamada é **reescrita** (não só validada) antes de ir ao MCP: `_read_denial` (agent.py:280-366) e `_write_denial` (agent.py:230-257) limpam o dicionário de input inteiro e remontam com os parâmetros que sobrevivem à política (`order_id` escalar, `owner_user_key` amarrado, status de uma allowlist, pipeline `$vectorSearch`/`$graphLookup` canônico). Detalhe completo em `queries.md` e `architecture.md`.
+
+### Ferramentas fora do MCP: `date_diff` e `web_search` (ADR-007, desde 2026-10-13)
+
+- **`date_diff`** (`agent.date_diff`): função pura que conta os dias de hoje até uma data
+  `AAAA-MM-DD`. Sempre disponível, sem rede, não contamina o turno. Existe porque o modelo
+  errava a subtração: em 13/10 respondeu "72 dias até o Natal" três vezes (são 73).
+- **`web_search`** (`backend/web_search.py`, Tavily): só entra na lista de ferramentas se
+  `ai_brain.tool_registry` (`_id: "web_search"`) a ligar para a área do turno, lido em
+  `agent_graph.n_identity`. Sem o documento, com ele ilegível ou sem `TAVILY_API_KEY`, a
+  ferramenta não existe (falha fechado). Com ela ligada, a pergunta fora do domínio da loja
+  não cai no redirecionamento fixo de escopo (`_route_after_resume`); vai para o agente.
+- **Taint do turno**: a primeira chamada a `web_search` marca o turno; qualquer `update-many`
+  depois dela recebe `agent.TAINTED_WRITE_DENIAL` antes do MCP, e o agente pede ao cliente que
+  confirme numa nova mensagem. Motivo: o agente junta dado privado, escrita e texto de
+  terceiros no mesmo contexto, e a reescrita de política não pega uma ordem escondida numa
+  página que pede um status permitido no pedido certo.
+- **Resultado como dado**: volta ao modelo entre `<resultados_web_nao_confiaveis>`, com a hora
+  atual e a instrução de ignorar comandos embutidos, citar a URL e avisar quando a fonte
+  contradiz o momento atual.
+- **Relógio**: `agent.clock_block()` (data, hora, fuso `America/Sao_Paulo`, distância até
+  31/12) entra no bloco dinâmico do system; a regra 7 do prompt manda buscar fato que muda com o
+  tempo ("último", "atual", resultados, preços) em vez de responder da memória do modelo.
+- **Cache**: turno com qualquer ferramenta não grava o cache compartilhado; resposta que cita a
+  data de hoje (`agent.uses_current_date`) também não. Cada entrada leva `web_enabled`, e
+  `cache._capability_ok` transforma em miss um acerto gravado com outra disponibilidade de
+  ferramenta. Pergunta que cita `PED-…` nem lê o cache.
 
 ## O loop de tool-use (`_run_tool_loop`, `agent.py:851-1004`)
 

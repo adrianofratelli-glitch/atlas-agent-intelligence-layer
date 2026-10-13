@@ -70,10 +70,13 @@ Ver `docs/adr/`. Para o "porquê" de cada uma, leia o ADR; aqui só o resumo de 
 - **ADR-002 — TTL em `POC.agent_sessions` (memória de curto prazo)**: `updated_at` expira em 24h de inatividade.
 - **ADR-003 — TTL em `POC.guardrail_events` e `POC.guardrail_candidates`**: `at` expira em 30 dias (audit log).
 - **ADR-004 — Guardrail near-miss learning loop com aprovação humana**: score "quase bloqueado" vira candidato revisável, nunca promoção automática ao denylist.
+- **ADR-005 — Quick-chat com gate de cache e histórico de sessão.**
+- **ADR-007 — Ferramenta externa de busca web, governada por documento**: `web_search` (Tavily) fora do MCP, ligada por área em `ai_brain.tool_registry`, taint que tira a escrita do resto do turno, cota/cache/auditoria no Atlas, relógio no prompt e `date_diff` para contagem de dias.
 
 ## Invariantes de arquitetura (não relaxar sem atualizar esta página)
 
-1. **Superfície de ferramentas do agente**: só `find`, `aggregate`, `update-many`. Nenhum delete/drop/count/schema chega ao modelo.
+1. **Superfície de ferramentas do agente**: pelo MCP, só `find`, `aggregate`, `update-many`. Nenhum delete/drop/count/schema chega ao modelo. Fora do MCP, só `date_diff` (pura) e `web_search` (registro por área + taint, ADR-007).
+10. **Conteúdo web contamina o turno**: depois de `web_search`, nenhuma escrita no mesmo turno (`agent.TAINTED_WRITE_DENIAL`).
 2. **Toda chamada é reescrita no servidor, não só validada** — o dicionário de input é limpo e remontado inteiro (`_read_denial`/`_write_denial` em `agent.py`), então opção extra que o modelo inventar (sort, limit, collation, upsert) nunca sobrevive.
 3. **Escrita com escopo de collection E de filtro**: `update-many` só em `POC.support_orders`, e só com um `order_id` escalar específico + status de uma allowlist. Memória/sessões são geridas pela plataforma, nunca pelo agente.
 4. **Isolamento é a cláusula `filter` da query, aplicada como pré-filtro nativo dentro da busca ANN** (ver ADR-001). O índice não autoriza nada sozinho: o filtro é imposto por `db.tenant_vector_stage`, único construtor de `$vectorSearch` em coleção por tenant, e `tests/test_tenant_filter.py` barra query montada por fora.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.0 (2026-10-13)
+
+- The agent answers questions outside the store's domain through a `web_search` tool (Tavily), dispatched server-side outside MCP and governed per area by `ai_brain.tool_registry` (fails closed without the document or the key; Finance is off in the seed). The LLM gateway rejects the provider's native web search tools (400), hence our own tool.
+- Taint: after a web search, every write in the same turn is denied on the server; the agent asks the customer to confirm in a new message. Web results reach the model between `<resultados_web_nao_confiaveis>` delimiters.
+- Monthly quota (`ai_brain.web_search_quota`, atomic conditional `$inc`, 900 < the 1,000 free credits), result cache with TTL (`POC.web_search_cache`) and audit (`POC.external_calls`, 30-day TTL). `seed_tool_registry.py` seeds only this, without resetting the demo.
+- Current date, time and timezone in the system prompt (tabs 2 and 3); answers that quote today's date are not written to the shared cache. Day counts come from a pure `date_diff` tool.
+- Semantic cache: a question that quotes an order (`PED-…`) no longer reads the cache (a FAQ used to swallow a refund request), and each entry records `web_enabled`, so an answer written without web search is not served to a turn that has it.
+- Behavior battery: 38 live turns across tabs 2 and 3; 4 failures found and fixed, 1 source-quality limit documented in ADR-007.
+
 ## 1.2.0 (2026-10-08)
 
 - Model swap to Sonnet 5.5 (and the Sonnet 5.5 fallback) no longer fails: a per-model capability table drops `temperature`/`top_p` for models that reject them; one retry without sampling if a new model returns that 400. Quick-chat degrades with a message instead of HTTP 500, and the UI maps HTTP status to readable text.

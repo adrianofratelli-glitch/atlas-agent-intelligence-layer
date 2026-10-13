@@ -42,7 +42,9 @@ Detalhe de UX relevante: o `ReplacementChain` lê o estado `visible` do replay (
 
 Badge da coluna MongoDB mostra o **estágio** (`$vectorSearch` / `$graphLookup`), não o nome cru da ferramenta MCP (`aggregate` cobre os dois casos e ficariam indistinguíveis na tela) — o `opLabel` deriva o rótulo do pipeline que o servidor efetivamente montou, então se a reescrita mudar, o rótulo muda junto em vez de mentir.
 
-Estados de UI relevantes em `Agent.jsx` (via `useState`): `scenarios` (chips por área), `tools` (ferramentas MCP realmente disponíveis nesta sessão), `users`, `liveStatus` (passo em andamento durante streaming, em vez de spinner genérico), `playlist`/`demo` (auto-demo), `tokensSaved` (contador de tokens evitados por cache hit), `showInspector` (painel de inspeção cache/memória/guardrail).
+Linha "Ferramentas:" (antes "Ferramentas MCP:"): pílulas das ferramentas MCP mais `web_search`, tracejada (`kind: "external"`), quando `ai_brain.tool_registry` a liga para a área default (`GET /api/agent/tools`; a decisão real é por área, no turno). Uma chamada web aparece na coluna de operações com o alvo `web · tavily` (ou `web · tavily (cache Atlas)` quando veio do cache), a consulta e as fontes; `date_diff` aparece como `cálculo local`.
+
+Estados de UI relevantes em `Agent.jsx` (via `useState`): `scenarios` (chips por área), `tools` (ferramentas disponíveis nesta sessão), `users`, `liveStatus` (passo em andamento durante streaming, em vez de spinner genérico), `playlist`/`demo` (auto-demo), `tokensSaved` (contador de tokens evitados por cache hit), `showInspector` (painel de inspeção cache/memória/guardrail).
 
 ## Fluxo do usuário na aba Agente
 

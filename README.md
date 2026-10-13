@@ -4,7 +4,7 @@ Most AI applications keep their "intelligence" everywhere except the database: p
 
 This PoV moves that layer into the database. Prompt schemas, model configuration, semantic cache, guardrail policies, and the agent's short- and long-term memory are all documents: changed with one `update_one`, applied on the next request, no restart. One cluster, one query language, one security model, and every cache hit, memory fact, and guardrail decision is a queryable document instead of a black box.
 
-**Stack:** React + Vite + LeafyGreen · FastAPI + PyMongo Async · MongoDB Atlas (Vector Search, `voyage-4` autoEmbed) · MongoDB MCP Server · Claude Sonnet 4.5 / Sonnet 5.5. The UI is in Brazilian Portuguese (used in customer sessions).
+**Stack:** React + Vite + LeafyGreen · FastAPI + PyMongo Async · MongoDB Atlas (Vector Search, `voyage-4` autoEmbed) · MongoDB MCP Server · Tavily (web search) · Claude Sonnet 4.5 / Sonnet 5.5. The UI is in Brazilian Portuguese (used in customer sessions).
 
 **Model capabilities.** Newer Claude models (Sonnet 5.x, Opus 5.x, Opus 4.8) reject `temperature`/`top_p` through the gateway (400 "deprecated for this model", probed 2026-10-08). `backend/gateway.py:MODEL_CAPABILITIES` drops the parameters a model does not accept, so `model_config` can keep a temperature and the swap still works; an unknown Claude model gets no sampling parameters. If both primary and fallback fail, the model-swap chat answers with a degraded message instead of an HTTP 500.
 
@@ -51,6 +51,8 @@ Each step is a real MongoDB operation, visible in the trace and in the in-app in
 
 **What stops the agent from dropping a collection.** The loop exposes only `find`, `aggregate`, and a scoped `update-many`. Every call is rewritten server-side before it reaches the MCP server: order reads require a scalar `PED-...` ID and get a PII-free projection, writes may set a single approved status field, and session reads are pinned to the caller. In production, also restrict the MCP server's Atlas user to the exact collections, or run it with `MDB_MCP_READ_ONLY=true`.
 
+**Reaching outside the database, governed by a document.** Questions outside the store's domain (news, dates, weather, exchange rates) go to a `web_search` tool (Tavily) that runs server-side, outside MCP. `ai_brain.tool_registry` turns it on or off per area with one `update_one` (Finance has it off in the seed); without the document or `TAVILY_API_KEY` the tool does not exist. Web content is untrusted, so the first search **taints the turn**: any write after it is denied on the server, and the agent asks the customer to confirm in a new message. A monthly quota (`ai_brain.web_search_quota`, atomic conditional `$inc`), a result cache with TTL (`POC.web_search_cache`, a repeated query costs no provider credit), and an audit trail of every external call (`POC.external_calls`) live in the same cluster. The turn also gets the current date and time, day counts come from a pure `date_diff` tool (the model kept answering "72 days to Christmas" on Oct 13; it is 73), and a cache entry records whether web search was available when it was written, so turning the tool on is not hidden by an old "out of scope" answer. Decision and trade-offs: [ADR-007](docs/adr/ADR-007-ferramenta-externa-busca-web.md).
+
 > **Thresholds are measured, not guessed.** The `vectorSearchScore` scale can shift when the `voyage-4` autoEmbed index/model is updated (this cluster moved from ~0.50 to ~0.59–0.86 in August 2026). Ranking is reliable; the absolute scale is not. `ai_brain.cache_config` and `ai_brain.guardrail_policies` hold the live thresholds, set by `backend/calibrate_thresholds.py` against labeled probes. Re-run it whenever the model, cluster, index, or seeded data changes.
 
 **Optional Langfuse observability.** With `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` in `.env`, each turn becomes a replayable trace (a generation per LLM call, a span per MCP tool call) with a "View trace in Langfuse" badge in the UI. Without the keys it is a no-op and nothing changes. Details in [`docs/briefing/architecture.md`](docs/briefing/architecture.md).
@@ -62,6 +64,8 @@ Each step is a real MongoDB operation, visible in the trace and in the in-app in
 | Collection | Database | Role |
 |---|---|---|
 | `cache_config` | ai_brain | live cache threshold/TTL |
+| `tool_registry` | ai_brain | external tools on/off per area (web search) |
+| `web_search_quota` | ai_brain | monthly web search credits |
 | `model_config` | ai_brain | active model, read on every request |
 | `area_profiles` | ai_brain | persona and rules per area |
 | `guardrail_policies` | ai_brain | policy per area |
@@ -72,6 +76,8 @@ Each step is a real MongoDB operation, visible in the trace and in the in-app in
 | `guardrail_events` | POC | audit log (30-day TTL) |
 | `agent_traces` | POC | replayable trace per turn (30-day TTL) |
 | `app_users` | POC | user → area |
+| `web_search_cache` | POC | web search results (TTL) |
+| `external_calls` | POC | audit of external tool calls (30-day TTL) |
 
 ## Run it
 

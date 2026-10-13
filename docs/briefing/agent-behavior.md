@@ -165,6 +165,13 @@ O gate de frases só pega o óbvio; paráfrases ("como devo ser tratado por voc�
 
 O extrator devolve `max_price_brl` estruturado no fato de limite de preço; um novo limite supersede o anterior automaticamente (só um ativo). Na busca de catálogo o servidor reescreve o pipeline e injeta o teto como **pré-filtro nativo** do `$vectorSearch` (`filter: {preco: {$lte: orçamento}}` — `preco` já é campo `filter` do índice `produtos_vector`): o ANN só percorre vetores dentro do orçamento, devolve sempre 3 itens e custa o mesmo que a busca sem filtro. O modelo não consegue ignorar nem substituir o filtro. **Piso de score medido e descartado**: sobre 20 consultas com orçamento R$ 800 (10 com item barato, 10 sem), os scores se sobrepõem — relevante mais baixo 0,7367 ("mochila"), irrelevante mais alto legítimo 0,7442 ("notebook gamer" → jogo). Um piso global seria arbitrário e contradiz "scores medidos, nunca fixados". Quem julga se os itens correspondem ao pedido (ex.: sem notebook barato, o vizinho mais próximo dentro do teto pode ser um livro) é o modelo, instruído no prompt a tratar isso como "sem opção no orçamento".
 
+
+Desde 2026-10-13 o teto dito **na própria mensagem** também vira pré-filtro
+(`memory.budget_from_message`, chamado em `agent_graph.n_run_pipeline`): palavra de teto
+("até", "no máximo", "abaixo de", "menos de", "teto de", "limite de") seguida, em até 3 tokens,
+de um valor com marca de moeda ("R$" antes ou "reais" depois). Vale o menor entre memória e
+mensagem. Sem marca de moeda nada muda ("até 2 fones", "até 30 dias", "fone até 300"). Sem `re`,
+como o resto de `memory.py`.
 ### Defesa contra envenenamento de memória: três camadas
 
 1. Prompt do extrator: recusa instruções que alterem política/permissão/segurança (julgamento do modelo).

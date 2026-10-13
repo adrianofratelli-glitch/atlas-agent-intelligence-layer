@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.3.1 (2026-10-13)
+
+- A price cap stated in the message ("até 300 reais", "no máximo R$ 1.200,00") becomes a server-side catalog pre-filter, like the budget stored in memory; the lower of the two wins. A number without a currency marker ("até 2 fones", "até 30 dias") is ignored.
+- Latency: the identity node reads model config, area profile and tool registry in parallel (~1.3 s → ~0.8 s per turn), the cache lookup reads its config and the exact match in parallel, and the backend warms the Atlas connection pool at startup (first turn after a restart ~12 s → ~9 s; warm turns ~5 s).
+- Chat answers render `**bold**` and clickable links (tabs 2 and 3) without `innerHTML`; a web call is labeled as a call, not as MCP.
+- Semantic cache for web results measured and rejected: with `voyage-4`, different questions ("first" vs "second round", "today" vs "tomorrow") score higher than the weakest paraphrase of the same question, so no threshold is safe. Details in ADR-007.
+- README screenshots of the agent tab recaptured with the current UI (web search call, cache hit).
+
 ## 1.3.0 (2026-10-13)
 
 - The agent answers questions outside the store's domain through a `web_search` tool (Tavily), dispatched server-side outside MCP and governed per area by `ai_brain.tool_registry` (fails closed without the document or the key; Finance is off in the seed). The LLM gateway rejects the provider's native web search tools (400), hence our own tool.

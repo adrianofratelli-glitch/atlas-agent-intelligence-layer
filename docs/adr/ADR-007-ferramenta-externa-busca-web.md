@@ -81,10 +81,16 @@ Três fatos medidos guiaram o desenho:
 - O pitch ganha três pontos de MongoDB: ferramenta ligada/desligada por
   `update_one`, crédito do provedor poupado pelo cache com TTL, trilha de auditoria
   consultável por agregação.
-- **Limite conhecido:** o cache web é por match exato da consulta normalizada. O
+- **Limite conhecido:** o cache web é por match exato da consulta normalizada; o
   modelo reescreve a consulta entre turnos ("data Brasil TSE" vs "data oficial
-  TSE") e o cache não casa. Cache semântico (`$vectorSearch`) exige limiar
-  calibrado (`calibrate_thresholds.py`), não escolhido na mão — próximo passo.
+  TSE") e aí o cache não casa.
+- **Cache semântico do resultado web: medido e descartado (2026-10-13).** Similaridade
+  `voyage-4` (o modelo do autoEmbed) entre consultas: a reescrita mais fraca da MESMA
+  pergunta ("cotação do dólar hoje" / "dólar comercial hoje cotação BRL") deu 0,871, enquanto
+  perguntas DIFERENTES deram mais: "primeiro turno" vs "segundo turno" 0,925 e "tempo em Recife
+  hoje" vs "amanhã" 0,914. Nenhum limiar pega a reescrita sem servir a resposta da pergunta
+  vizinha. O cache web fica no match exato da consulta normalizada (que acerta quando o modelo
+  repete a consulta — visto ao vivo no screenshot da Aba 3).
 - **Limite conhecido:** o modelo nem sempre confronta a fonte com o relógio
   (medido: "noite sem nuvens" às 11 h, vindo de uma página de clima desatualizada),
   mesmo com a instrução explícita. É julgamento sobre o dado da fonte, não regra

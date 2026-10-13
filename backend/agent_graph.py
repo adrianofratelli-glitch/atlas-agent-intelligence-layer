@@ -43,6 +43,7 @@ import observability
 import policy_guardrails as guardrails
 import profiles
 import turn_classifier
+import web_search
 from db import DB_MAIN, MAX_TIME_MS, SESSION_IDLE_SECONDS, poc
 from guidance import is_obviously_out_of_scope, scope_reply
 
@@ -86,6 +87,7 @@ class TurnState(TypedDict, total=False):
     # `live_degraded_turn` em produção — ver chaos-report).
     _area_profile: dict
     _used_business_tools: bool
+    _web_cfg: Optional[dict]
 
 
 def _emit(ctx: dict, trace: list, phase: str, kind: str, **fields) -> None:
@@ -135,13 +137,17 @@ async def n_identity(state: TurnState, config) -> dict:
     area = user.get("area", profiles.DEFAULT_AREA)
     agent_model, agent_fallback_model = await agent._resolve_agent_model(area)
     area_profile = await profiles.get_area_profile(area)
-    metrics["reads"] += 2
+    # Registro de ferramentas (ai_brain.tool_registry): decide, por área, se a busca
+    # web existe neste turno. Lido antes do roteamento: com a web ligada, pergunta fora
+    # do domínio da loja vai para o agente (que busca), não para o redirecionamento fixo.
+    web_cfg = await web_search.get_config(area)
+    metrics["reads"] += 3
     profile_info = {"area": area, "label": area_profile.get("label", area),
                      "user_key": user_key, "user_name": user.get("name", user_key)}
     return {"area": area, "agent_model": agent_model,
             "agent_fallback_model": agent_fallback_model,
             "profile_info": profile_info, "_area_profile": area_profile,
-            "metrics": metrics}
+            "_web_cfg": web_cfg, "metrics": metrics}
 
 
 async def n_guard_input(state: TurnState, config) -> dict:
@@ -187,7 +193,7 @@ async def n_resume_check(state: TurnState, config) -> dict:
 def _route_after_resume(state: TurnState) -> str:
     if not state["guard_in"]["allowed"]:
         return "blocked"
-    if is_obviously_out_of_scope(state["user_msg"]):
+    if not state.get("_web_cfg") and is_obviously_out_of_scope(state["user_msg"]):
         return "scope"
     return "cache_lookup"
 
@@ -239,15 +245,24 @@ async def n_cache_lookup(state: TurnState, config) -> dict:
     trace, metrics = state["trace"], state["metrics"]
     user_msg, area = state["user_msg"], state["area"]
     personal_turn = memory.should_extract(user_msg)
-    if personal_turn:
+    # Pergunta que cita um pedido (`PED-…`) é transacional: pede ação ou dado DESTE
+    # cliente. A gravação já recusava esses turnos (transactional_turn); a LEITURA não
+    # — medido 2026-10-13: "…e já solicite o reembolso do meu PED-4002" foi servida pela
+    # FAQ de arrependimento e o reembolso nunca aconteceu. Mesma regra nas duas pontas.
+    order_turn = not personal_turn and agent.mentions_order(user_msg)
+    if personal_turn or order_turn:
         cache_res = {"hit": False, "score": 0.0, "threshold": None, "answer": None,
                      "question": None, "source_id": None, "latency_ms": 0, "mode": "bypass"}
         _emit(ctx, trace, "retrieve", "message", actor="agent",
-              text="Cache semântico ignorado: a mensagem é pessoal (preferência/"
-                   "tratamento) e depende da memória de longo prazo do usuário.")
+              text=("Cache semântico ignorado: a mensagem cita um pedido — é transacional "
+                    "e precisa chegar ao agente (uma FAQ não executa a ação pedida)."
+                    if order_turn else
+                    "Cache semântico ignorado: a mensagem é pessoal (preferência/"
+                    "tratamento) e depende da memória de longo prazo do usuário."))
     else:
         with observability.span("cache.lookup", **{"area": area, "step": "semantic_cache"}):
-            cache_res = await cache.lookup(user_msg, area)
+            cache_res = await cache.lookup(user_msg, area,
+                                           web_enabled=bool(state.get("_web_cfg")))
         metrics["reads"] += 1
         _emit(ctx, trace, "retrieve", "tool_call", actor="mongodb",
               tool="$vectorSearch (semantic_cache)",
@@ -382,6 +397,10 @@ async def n_run_pipeline(state: TurnState, config) -> dict:
         f"\n\nResumo do início desta conversa (turnos mais antigos, já fora da "
         f"janela recente): {history_summary}" if history_summary else "")
     system_static = agent.SYSTEM + persona_block
+    web_cfg = state.get("_web_cfg")
+    tools = list(tools) + [agent.DATE_DIFF_DEFINITION]
+    if web_cfg:
+        tools.append(web_search.TOOL_DEFINITION)
     budget_block = (
         f"\n\nOrçamento do cliente: R$ {budget_brl:,.2f}. A busca de catálogo já "
         "devolve somente itens dentro desse teto (filtro aplicado pelo sistema). Os "
@@ -390,7 +409,8 @@ async def n_run_pipeline(state: TurnState, config) -> dict:
         "itens de outra categoria, diga que não há opção dentro do orçamento — "
         "nunca que o produto está indisponível — e ofereça alternativas próximas."
         if budget_brl else "")
-    system_dynamic = (agent._memory_note(conversation_id) + memory.format_for_prompt(ltm)
+    system_dynamic = (agent.clock_block() + agent._memory_note(conversation_id)
+                      + memory.format_for_prompt(ltm)
                        + budget_block + summary_block)
 
     emit_fn = lambda *a, **k: _emit(ctx, trace, *a, **k)  # noqa: E731
@@ -399,6 +419,7 @@ async def n_run_pipeline(state: TurnState, config) -> dict:
             session, tools, system_static, system_dynamic, user_msg, emit_fn,
             metrics, state["agent_model"], conversation_id, user_key, history=history,
             fallback_model=state["agent_fallback_model"], budget_brl=budget_brl,
+            web_cfg=web_cfg, area=state["area"],
         ),
         emit=emit_fn, metrics=metrics,
     )
@@ -477,13 +498,17 @@ async def n_cache_store(state: TurnState, config) -> dict:
                         or bool(ltm.get("facts")) or mem_task_fired
                         or personal_turn
                         or agent.transactional_turn(user_msg, final_answer, used_business_tools))
+        time_bound = not personalized and agent.uses_current_date(final_answer)
+        if time_bound:
+            personalized = True
         if not personalized:
             store_cls = await turn_classifier.classify(user_msg)
             metrics["reads"] += 1
             personalized = store_cls["personal"]
         if not personalized:
             with observability.span("cache.store", **{"area": area, "step": "semantic_cache"}):
-                await cache.store(user_msg, final_answer, agent_model, area=area)
+                await cache.store(user_msg, final_answer, agent_model, area=area,
+                                  web_enabled=bool(state.get("_web_cfg")))
             metrics["writes"] += 1
             cache_stored = True
             _emit(ctx, trace, "store", "tool_call", actor="mongodb",
@@ -491,10 +516,19 @@ async def n_cache_store(state: TurnState, config) -> dict:
                   args={"database": DB_MAIN, "collection": "semantic_cache"},
                   result="Resposta gravada no cache semântico para reuso futuro (com TTL).",
                   reads=metrics["reads"], writes=metrics["writes"])
+        elif time_bound:
+            _emit(ctx, trace, "store", "message", actor="agent",
+                  text="Resposta depende da data de hoje — não vai para o cache "
+                       "compartilhado (amanhã ela estaria errada).")
         else:
             _emit(ctx, trace, "store", "message", actor="agent",
                   text="Resposta personalizada — não vai para o cache compartilhado "
                        "(higiene de cache: respostas com dados do cliente não são reusadas).")
+    elif metrics.get("web_searches"):
+        _emit(ctx, trace, "store", "message", actor="agent",
+              text="Resposta com conteúdo da web — não vai para o cache semântico "
+                   "compartilhado. O resultado bruto da busca fica em web_search_cache "
+                   "(TTL), para a mesma consulta não gastar crédito do provedor de novo.")
 
     cache_res["stored"] = cache_stored
     return {"cache_res": cache_res, "cache_stored": cache_stored, "trace": trace, "metrics": metrics}
@@ -591,6 +625,7 @@ async def run_turn(session, *, scenario, user_msg, conversation_id, user_key,
         "user_key": user_key, "trace": [],
         "metrics": {
             "reads": 0, "writes": 0, "tools_used": 0, "latency_ms": 0,
+            "web_searches": 0, "web_cache_hits": 0,
             "degraded": False, "degraded_reason": None,
             "input_tokens": 0, "output_tokens": 0,
             "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0,

@@ -47,12 +47,16 @@ from agent import (
     AREA_SCENARIOS,
     DEMO_PLAYLIST,
     WRITE_TOOLS,
+    clock_block,
     forget_connection_id,
     list_agent_tools,
     mcp_server_params,
+    mentions_order,
     run_agent,
+    uses_current_date,
     warm_up_session,
 )
+import web_search
 from db import MAX_TIME_MS, SESSION_IDLE_SECONDS, SafeQueryError, ai_brain, get_client, poc, safe_query
 import gateway
 from llm import call_with_fallback, get_active_config
@@ -606,10 +610,13 @@ async def quick_chat(body: QuickChatBody, request: Request):
     # Pergunta pessoal ou sobre a própria conversa depende de quem/quando pergunta:
     # não lê nem grava o cache compartilhado (mesmo gate do agente; falha fechado).
     bypass_cache = (body.no_cache or memory.should_extract(masked)
-                    or memory.references_conversation(masked))
+                    or memory.references_conversation(masked)
+                    or mentions_order(masked))  # transacional: nem lê nem grava (agente idem)
     if not bypass_cache:
         bypass_cache = (await turn_classifier.classify(masked))["personal"]
-    cached = {"hit": False, "bypass": True} if bypass_cache else await cache.lookup(masked, area=area)
+    # Mini-chat não tem busca web: só reaproveita entradas geradas sem ela (e FAQs).
+    cached = ({"hit": False, "bypass": True} if bypass_cache
+              else await cache.lookup(masked, area=area, web_enabled=False))
     if cached.get("hit"):
         observability.metrics.bump("cache_hits")
         return {
@@ -624,7 +631,8 @@ async def quick_chat(body: QuickChatBody, request: Request):
     history = await _quick_chat_history(body.history, area)
     try:
         result = await call_with_fallback(
-            system="Você é um assistente de e-commerce. Responda em português, em poucas frases.",
+            system=(clock_block() + "Você é um assistente de e-commerce. "
+                    "Responda em português, em poucas frases."),
             messages=history + [{"role": "user", "content": masked}],
             area=area,
         )
@@ -653,10 +661,12 @@ async def quick_chat(body: QuickChatBody, request: Request):
     result["text"] = guard_out["text"]
     # Sem memória/tools neste endpoint → resposta é genérica por construção,
     # segura para o cache compartilhado da área.
-    if not bypass_cache:
+    # Resposta que cita a data de hoje depende de QUANDO foi perguntada: amanhã estaria
+    # errada, então não vai para o cache compartilhado (mesma regra do agente).
+    if not bypass_cache and not uses_current_date(result["text"]):
         try:
             await cache.store(masked, result["text"], result.get("model", "?"),
-                              scope="quick-chat", area=area)
+                              scope="quick-chat", area=area, web_enabled=False)
         except Exception:  # noqa: BLE001 — falha de cache nunca degrada a resposta
             logger.exception("cache store falhou no quick-chat")
     result["cache"] = cached
@@ -726,13 +736,13 @@ async def agent_tools(request: Request):
     session = get_mcp_session(request.app)
     if session is None:
         return {"tools": []}
-    tools = await list_agent_tools(session)
-    return {
-        "tools": [
-            {"name": t["name"], "kind": "write" if t["name"] in WRITE_TOOLS else "read"}
-            for t in tools
-        ]
-    }
+    tools = [{"name": t["name"], "kind": "write" if t["name"] in WRITE_TOOLS else "read"}
+             for t in await list_agent_tools(session)]
+    # Ferramenta externa (fora do MCP), governada por ai_brain.tool_registry. A pílula
+    # reflete a área default; a decisão real é por área, no turno.
+    if await web_search.get_config("default"):
+        tools.append({"name": web_search.TOOL_NAME, "kind": "external"})
+    return {"tools": tools}
 
 
 class AgentRunBody(BaseModel):

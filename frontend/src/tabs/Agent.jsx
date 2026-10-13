@@ -53,7 +53,12 @@ const short = (obj, n = 160) => {
   return s.length > n ? s.slice(0, n) + '…' : s;
 };
 
-const opTarget = (args = {}) => `${args.database ?? '?'}.${args.collection ?? '?'}`;
+// Busca web não é collection: o alvo é o provedor externo (fora do MCP).
+const opTarget = (args = {}) => (args.provider === 'local'
+  ? 'cálculo local'
+  : args.provider
+  ? `web · ${args.provider}${args.cache_hit ? ' (cache Atlas)' : ''}`
+  : `${args.database ?? '?'}.${args.collection ?? '?'}`);
 // O nome da ferramenta MCP ("aggregate") cobre tanto a busca vetorial do catálogo quanto a
 // travessia da cadeia de trocas. O estágio real vem do pipeline que o servidor montou, então
 // o rótulo é derivado do que foi de fato enviado — não de um palpite pelo nome da collection.
@@ -73,6 +78,8 @@ const opDetail = (args = {}) => {
   if (args.pipeline) return short(args.pipeline, 200);
   if (args.filter) return 'filter: ' + short(args.filter, 140);
   if (args.update) return 'update: ' + short(args.update, 140);
+  if (args.provider) return 'query: ' + short(args.query, 120)
+    + (args.sources?.length ? ' · fontes: ' + args.sources.join(', ') : '');
   if (args.query) return 'query: ' + short(args.query, 140);
   return '';
 };
@@ -524,7 +531,7 @@ export default function Agent({ state, setState }) {
         {/* ferramentas MCP disponíveis + memória da sessão */}
         <div className="agent-meta">
           <div className="tools-row">
-            <span className="dim mono">Ferramentas MCP:</span>
+            <span className="dim mono">Ferramentas:</span>
             {tools.map((t) => (
               <span
                 key={t.name}

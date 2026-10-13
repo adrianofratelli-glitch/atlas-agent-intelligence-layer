@@ -72,7 +72,21 @@ def _area_visible(doc_area: str | None, area: str) -> bool:
     return doc_area in (None, "global", area)
 
 
-async def lookup(question: str, area: str = "default") -> dict:
+def _capability_ok(doc: dict, web_enabled: bool | None) -> bool:
+    """A entrada foi gravada com as MESMAS ferramentas que o turno atual tem?
+
+    Resposta gerada sem busca web ("fora do escopo", "não tenho dados em tempo real")
+    não pode ser servida depois que a área ganhou a busca — senão ligar a ferramenta no
+    `tool_registry` ao vivo não muda nada até o TTL vencer. FAQ semeada não tem o
+    carimbo (`web_enabled` ausente) e vale sempre; `web_enabled=None` no lookup = não
+    conferir (chamador legado).
+    """
+    stamp = doc.get("web_enabled")
+    return web_enabled is None or stamp is None or stamp == web_enabled
+
+
+async def lookup(question: str, area: str = "default",
+                 web_enabled: bool | None = None) -> dict:
     """Return {hit, score, threshold, answer, question, source_id, latency_ms, mode}.
 
     Cache isolation per AREA as a NATIVE pre-filter: `area` is a filter field in
@@ -98,7 +112,7 @@ async def lookup(question: str, area: str = "default") -> dict:
                                 num_candidates=50, limit=1 if with_filter else 25,
                                 unfiltered_postfilter=not with_filter),
             {"$project": {"question": 1, "answer": 1, "model": 1, "area": 1,
-                          "score": {"$meta": "vectorSearchScore"}}},
+                          "web_enabled": 1, "score": {"$meta": "vectorSearchScore"}}},
         ]
 
     # Mesma pergunta (texto normalizado) já respondida: hit direto, sem embedding
@@ -107,7 +121,7 @@ async def lookup(question: str, area: str = "default") -> dict:
         docs, mode = await _exact_fallback(coll, question, area), "exact-recent"
     except Exception:  # noqa: BLE001 — o caminho vetorial segue valendo
         docs = []
-    if docs:
+    if docs and _capability_ok(docs[0], web_enabled):
         return await _finish_exact(coll, docs[0], threshold, t0)
 
     try:
@@ -129,7 +143,8 @@ async def lookup(question: str, area: str = "default") -> dict:
 
     top = docs[0]
     score = float(top.get("score", 0.0))
-    hit = score >= threshold
+    capability_ok = _capability_ok(top, web_enabled)
+    hit = score >= threshold and capability_ok
     result = {
         "hit": hit,
         "score": round(score, 4),
@@ -140,6 +155,8 @@ async def lookup(question: str, area: str = "default") -> dict:
         "matched_area": top.get("area"),  # None → entrada global (FAQ)
         "source_id": str(top.get("_id")),
     }
+    if not capability_ok:
+        result["capability_mismatch"] = True
     if hit:
         result["answer"] = top.get("answer", "")
         result["model"] = top.get("model")
@@ -179,7 +196,7 @@ async def _exact_fallback(coll, question: str, area: str = "default") -> list[di
 
 
 async def store(question: str, answer: str, model: str, scope: str = "support",
-                area: str = "default") -> str:
+                area: str = "default", web_enabled: bool | None = None) -> str:
     """Insert a new Q&A into the cache. Atlas auto-embeds `question` at write time.
 
     Runtime entries get `expires_at` (a real BSON date): the TTL index created by
@@ -195,6 +212,7 @@ async def store(question: str, answer: str, model: str, scope: str = "support",
         "model": model,
         "scope": scope,
         "area": area,  # cache isolation: only served back to users of this area
+        "web_enabled": web_enabled,  # carimbo de capacidade (ver _capability_ok)
         "hits": 0,
         "created_at": _utcnow(),
         "last_hit_at": None,

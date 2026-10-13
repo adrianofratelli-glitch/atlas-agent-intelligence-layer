@@ -1206,6 +1206,10 @@ def main(argv: list[str] | None = None):
           f"agent_traces.at e guardrail_candidates.at ({AUDIT_TTL_DAYS} dias) · "
           f"agent_sessions.updated_at ({SESSION_IDLE_SECONDS // 3600} h de inatividade)")
 
+    # registro de ferramentas externas (busca web) + TTL do cache web/auditoria (ADR-007)
+    from seed_tool_registry import seed_tool_registry
+    seed_tool_registry(db, poc)
+
     # probes ANTES dos índices: a coleção turn_probes precisa existir (e ter dado)
     from seed_turn_probes import seed_probes_and_config
     seed_probes_and_config(client[_DB_BRAIN])

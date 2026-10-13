@@ -992,6 +992,13 @@ footer.app-footer p {
   color: var(--orange);
   background: rgba(255, 192, 16, 0.1);
 }
+/* ferramenta externa (fora do MCP, governada por ai_brain.tool_registry) */
+.tool-pill.external { border-style: dashed; }
+.tool-pill.used.external {
+  border-color: var(--text-primary, #FDFFF5);
+  color: var(--text-primary, #FDFFF5);
+  background: rgba(253, 255, 245, 0.08);
+}
 
 .memory-pill {
   display: flex;

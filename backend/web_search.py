@@ -7,8 +7,8 @@ Decisão e trade-offs em docs/adr/ADR-007. O que este módulo garante, e onde:
   ferramenta existe no código; documento ausente, ilegível ou sem `TAVILY_API_KEY` = desligada
   (falha fechado).
 - **Cota mensal no servidor** — `ai_brain.web_search_quota` (`_id: "AAAA-MM"`) com `$inc`
-  condicional atômico. O plano gratuito do Tavily é de 1.000 créditos/mês; o teto
-  (`monthly_limit`) fica abaixo disso e é ajustável ao vivo.
+  condicional atômico. O plano gratuito do Tavily é de 1.000 créditos/mês, divididos entre as PoVs
+  (aqui 500); o teto (`monthly_limit`) é ajustável ao vivo.
 - **Cache de resultado no Atlas** — `POC.web_search_cache`, chave = consulta normalizada,
   índice TTL em `expires_at`. Repetir a busca não gasta crédito do provedor.
 - **Auditoria** — cada chamada (inclusive cache hit, cota estourada e erro) vira um documento
@@ -48,7 +48,8 @@ MAX_RESULT_CHARS = 2_500   # teto determinístico do texto que volta ao modelo
 DEFAULTS = {
     "enabled": False,
     "disabled_areas": [],
-    "monthly_limit": 900,          # abaixo dos 1.000 créditos/mês do plano gratuito
+    # A chave Tavily é UMA para o portfólio (1.000 créditos/mês): singleagent 500 + multiagente-atendimento 400.
+    "monthly_limit": 500,
     "max_results": 3,
     "cache_ttl_seconds": 6 * 3600,  # dado web envelhece: horas, não dias
     "search_depth": "basic",        # "basic" = 1 crédito; "advanced" = 2

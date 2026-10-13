@@ -81,7 +81,7 @@ class QuotaTests(unittest.TestCase):
     def test_month_at_the_limit_is_refused_without_calling_the_provider(self):
         coll = mock.MagicMock()
         coll.find_one_and_update = mock.AsyncMock(side_effect=DuplicateKeyError("dup"))
-        coll.find_one = mock.AsyncMock(return_value={"used": 900})
+        coll.find_one = mock.AsyncMock(return_value={"used": 500})
         cache_coll = mock.MagicMock()
         cache_coll.find_one = mock.AsyncMock(return_value=None)
         tavily = mock.AsyncMock()

@@ -193,7 +193,7 @@ async def lifespan(app: FastAPI):
         await asyncio.gather(*pool_tasks, janitor_task, warm_task)
 
 
-app = FastAPI(title="MongoDB Intelligence Layer", lifespan=lifespan)
+app = FastAPI(title="MongoDB Intelligence Layer", version="1.3.1", lifespan=lifespan)
 
 # Origens permitidas configuráveis por ambiente (CSV) — atrás de um domínio real
 # basta setar CORS_ORIGINS, sem alteração de código.

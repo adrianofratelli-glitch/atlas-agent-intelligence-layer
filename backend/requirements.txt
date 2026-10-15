@@ -2,12 +2,12 @@ fastapi>=0.120,<0.140
 uvicorn[standard]==0.34.*
 # PyMongo Async (AsyncMongoClient) — o driver assíncrono oficial; substitui o
 # Motor, que foi deprecado pela MongoDB
-pymongo>=4.17,<5
+pymongo>=4.18.3,<5
 anthropic[mcp]>=0.109
-mcp>=1.0
+mcp>=1.30,<2
 python-dotenv==1.*
 # JWT demo-issuer (produção troca a emissão pelo IdP corporativo via JWKS)
-pyjwt>=2.9,<3
+pyjwt>=2.15,<3
 
 # Security floors for existing transitive dependencies; no core replacement.
 pydantic-settings>=2.14.2,<3
@@ -19,4 +19,8 @@ langfuse>=2,<3
 # Orquestração do turno da Aba 3 (backend/agent_graph.py) — StateGraph com
 # checkpoint nativo em MongoDB (thread_id = conversation_id).
 langgraph>=1,<2
-langgraph-checkpoint-mongodb>=0.5,<1
+langgraph-checkpoint-mongodb>=0.5.1,<1
+
+# Pisos de segurança para dependências transitivas.
+anyio>=4.14.2,<5
+cryptography>=50,<51

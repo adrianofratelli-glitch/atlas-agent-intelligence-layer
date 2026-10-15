@@ -18,10 +18,10 @@ export default defineConfig({
       stream: require.resolve('stream-browserify'),
     },
   },
-  server: {
+  server: { host: '127.0.0.1',
     port: 5183,
     strictPort: true,
     proxy: apiProxy,
   },
-  preview: { port: 5183, strictPort: true, proxy: apiProxy },
+  preview: { host: '127.0.0.1', port: 5183, strictPort: true, proxy: apiProxy },
 });

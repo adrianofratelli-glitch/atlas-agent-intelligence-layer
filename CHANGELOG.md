@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Atualiza dependências compatíveis e pisos de segurança; alinha metadados de versão entre aplicação e frontend.
+
 ## 1.3.1 (2026-10-13)
 
 - A price cap stated in the message ("até 300 reais", "no máximo R$ 1.200,00") becomes a server-side catalog pre-filter, like the budget stored in memory; the lower of the two wins. A number without a currency marker ("até 2 fones", "até 30 dias") is ignored.

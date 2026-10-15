@@ -3,11 +3,11 @@
 Formato, campos e métricas: [`eval/FORMAT.md`](../eval/FORMAT.md) — espelho do
 `../multiagente-atendimento/eval/FORMAT.md`, com as diferenças listadas lá (não há roteamento
 para medir num agente único; o análogo de "handoffs por turno" é "chamadas de ferramenta por
-turno"). Relatórios crus em [`eval/reports/`](../eval/reports/).
+turno"). Relatórios crus são gerados localmente em `eval/reports/` (não versionados).
 
 ## Metodologia
 
-* **Dataset**: `eval/dataset.json`, 28 casos, `"synthetic": true`, escritos por Claude Opus 5 em
+* **Dataset**: `eval/dataset.json`, 28 casos, `"synthetic": true`, definidos em
   22/09/2026. Cobre status/defeito/reembolso/troca, cadeia de trocas, FAQ de cache, fora de
   escopo, quatro tentativas de bloqueio pelo guardrail, PII na entrada, escrita fora da política,
   leitura ampla, e seis turnos pessoais (portão de memória).

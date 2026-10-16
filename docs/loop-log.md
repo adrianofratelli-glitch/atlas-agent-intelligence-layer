@@ -195,3 +195,17 @@ nenhuma escrita nos bancos da demo.
   turno real com 1ª operação na tela aos 6,4 s e as seguintes conforme chegam.
 - **Regressão:** frontend 8/8, visual 3/3 (baseline da tab3 atualizado, mudança intencional),
   e2e 1/1.
+
+## Checkpoint entre partes — 2026-10-16
+
+- Fases A0–A7: **todas verdes**, nenhuma bloqueada (A5 resolvido com `pymongo[encryption]`,
+  sem `crypt_shared`).
+- `_shared` 0.3.0 na branch `feat/atlas-capabilities-2026-10` (`5bd5058`, `47f5c96`), CHANGELOG
+  descreve a API nova (`atlas_retrieval`); suíte do `_shared` 272 verdes.
+- Suíte offline da Parte B (`multiagente-atendimento/backend`, `pytest -q`) contra o pov-shared
+  0.3.0 instalado editável: 523 passed, 50 skipped.
+- Demo: nenhuma escrita desta sessão depois da correção do isolamento do caos (snapshot das 42
+  coleções igual antes/depois em duas regressões). Antes da correção, a bateria LIVE completa
+  (código pré-existente) gravou 5 sessões, 45 checkpoints, 235 checkpoint_writes e 5
+  guardrail_events em `POC`; sessões e checkpoints expiram por TTL em 24 h, os eventos em 30 dias.
+- `graphify update` rodado em `singleagent` e `_shared`.

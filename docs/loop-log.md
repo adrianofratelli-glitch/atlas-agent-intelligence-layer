@@ -88,3 +88,11 @@ nenhuma escrita nos bancos da demo.
 - **Observação de UX (para A7):** a coluna MongoDB fica vazia por 15,8 s durante o turno; os
   eventos do SSE só viram uma linha de status e o trace inteiro aparece no fim. Página com
   1.376 px numa tela de 900.
+
+### Iteração 2 — 2026-10-16
+
+- **O que falhou:** Playwright visual `tab3-agent` (4% dos pixels).
+- **Causa raiz:** dado de teste, não código: o usuário `eval.mem.ana`, inserido em
+  `POC_test.app_users` para o turno LIVE, virou uma pílula a mais na fileira de usuários.
+- **Correção:** usuário removido do banco de teste depois da verificação LIVE.
+- **Resultado:** visual 3/3. A2 verde.

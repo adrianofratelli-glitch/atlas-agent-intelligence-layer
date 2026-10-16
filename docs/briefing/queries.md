@@ -266,3 +266,42 @@ Atômico: com o mês no teto, o filtro não casa, o upsert colide no `_id` (`Dup
 ## Nota sobre a escala do score
 
 `vectorSearchScore` não é uma constante confiável entre atualizações de índice/modelo — já mudou de ~0.50 para ~0.59–0.86 neste cluster em agosto de 2026. O ranqueamento é confiável; a escala absoluta não. Por isso nenhum threshold é fixado no código: cache e guardrail leem de `ai_brain.cache_config`/`guardrail_policies`, escritos por `calibrate_thresholds.py` contra probes rotulados — rodar de novo após qualquer mudança de embedding/índice/tier/seed.
+
+## Memória longa: `$rankFusion` (2026-10, `memory.rank_fusion_pipeline`)
+
+Uma agregação em `POC.agent_memory`, montada pelos builders do `pov-shared` (`atlas_retrieval`):
+
+```js
+[
+  { $rankFusion: {
+      input: { pipelines: {
+        vector: [ { $vectorSearch: { index: "agent_memory_vs", path: "fact", query: "<pergunta>",
+                    numCandidates: 100, limit: 8,
+                    filter: { user_key: "<user_key>", active: true } } } ],
+        bm25:   [ { $search: { index: "agent_memory_bm25", compound: {
+                      should: [ { text: { query: "<pergunta>", path: "fact", score: { boost: { value: 2 } } } },
+                                { text: { query: "<pergunta>", path: "fact", fuzzy: { maxEdits: 1 } } } ],
+                      minimumShouldMatch: 1,
+                      filter: [ { equals: { path: "user_key", value: "<user_key>" } },
+                                { equals: { path: "active", value: true } } ] } } },
+                  { $limit: 8 } ] } },
+      combination: { weights: { vector: 1.0, bm25: 1.0 } },
+      scoreDetails: true } },
+  { $limit: 5 },
+  { $addFields: { fusion_score: { $meta: "score" }, score_details: { $meta: "scoreDetails" } } },
+  // opcional (rerank.enabled): $set de guarda → $rerank → rerank_score → $limit 5
+  { $project: { fact: 1, category: 1, created_at: 1, active: 1, superseded_by: 1,
+                fusion_score: 1, score_details: 1, rerank_score: 1 } }
+]
+```
+
+Pesos, profundidade (8), `num_candidates` e fuzzy vêm de `ai_brain.memory_retrieval_config`.
+`agent_memory_bm25.fact` usa `lucene.portuguese`. Em paralelo (1ª onda): config, `count_documents`
+e os 6 fatos mais recentes. Fallback: as duas pernas acima em paralelo + RRF na aplicação.
+
+## Change stream do cache (`cache_invalidation.pipeline`)
+
+`ai_brain.area_profiles.watch([{ $match: { operationType: { $in: ["insert","update","replace","delete","invalidate"] } } },
+{ $project: {...} }], { fullDocument: "updateLookup", maxAwaitTimeMS: 5000 })`; o handler faz
+`semantic_cache.deleteMany({ area, scope: { $ne: "faq" } })` e
+`deleteMany({ scope: "faq", source_area: area, source_hash: { $ne: <hash novo> } })`.

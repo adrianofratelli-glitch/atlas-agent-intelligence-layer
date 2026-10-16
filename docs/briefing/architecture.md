@@ -29,9 +29,10 @@ A aba 3 é o core do produto e o assunto deste documento (e de `agent-behavior.m
 | Arquivo | Responsabilidade |
 |---|---|
 | `agent.py` | Orquestração do loop de tool-use, allowlist/reescrita de política de ferramentas, orçamentos de contexto, chips `AREA_SCENARIOS`, `DEMO_PLAYLIST` |
-| `memory.py` | Memória de longo prazo (fatos), retrieval híbrido (`$vectorSearch` + BM25 + RRF), gate de extração, dedup, supersessão transacional |
+| `memory.py` | Memória de longo prazo (fatos), retrieval híbrido num `$rankFusion` (vetor + BM25 pt) com fallback em cascata, gate de extração, dedup, supersessão transacional |
 | `graph.py` | Travessia da cadeia de trocas (`$graphLookup`) — ver `queries.md` |
 | `cache.py` | Cache semântico escopado por área, TTL, fallback exato |
+| `cache_invalidation.py` | Worker de change stream (lifespan) que invalida o cache por área quando a persona muda |
 | `guardrails.py` | Política por área, máscara de PII, denylist semântica, auditoria, fila de near-miss |
 | `profiles.py` | Resolução usuário → área |
 | `db.py` | Conexão Atlas (pool), `safe_query` (erros operacionais → mensagem amigável) |
@@ -71,6 +72,11 @@ Ver `docs/adr/`. Para o "porquê" de cada uma, leia o ADR; aqui só o resumo de 
 - **ADR-003 — TTL em `POC.guardrail_events` e `POC.guardrail_candidates`**: `at` expira em 30 dias (audit log).
 - **ADR-004 — Guardrail near-miss learning loop com aprovação humana**: score "quase bloqueado" vira candidato revisável, nunca promoção automática ao denylist.
 - **ADR-005 — Quick-chat com gate de cache e histórico de sessão.**
+- **ADR-008 — Memória longa com `$rankFusion` no servidor, `scoreDetails` e config viva** (`ai_brain.memory_retrieval_config`).
+- **ADR-009 — `$rerank` na memória**: implementado e medido, desligado por padrão.
+- **ADR-010 — Invalidação do cache semântico por Change Stream** de `ai_brain.area_profiles` (`backend/cache_invalidation.py`).
+- **ADR-011 — Queryable Encryption** para PII do perfil, standalone (`backend/scripts/qe_sensitive_profile.py`).
+- **ADR-012 — Por que não o `MongoDBStore` do LangGraph** na memória longa.
 - **ADR-007 — Ferramenta externa de busca web, governada por documento**: `web_search` (Tavily) fora do MCP, ligada por área em `ai_brain.tool_registry`, taint que tira a escrita do resto do turno, cota/cache/auditoria no Atlas, relógio no prompt e `date_diff` para contagem de dias.
 
 ## Invariantes de arquitetura (não relaxar sem atualizar esta página)

@@ -41,6 +41,12 @@ Each step is a real MongoDB operation, visible in the trace and in the in-app in
 
 **Two-tier memory.** Short-term is `agent_sessions`: the current conversation's `turns[]`, capped with `$slice`, with the recent window hydrated into context while the full history stays one query away. Long-term is `agent_memory`: one document per durable fact about the user, retrieved by `$vectorSearch` pre-filtered by `user_key` + `active`, so prompt size does not grow with memory size. A contradicting fact does not overwrite: it inserts, and the old one flips to `active: false` + `superseded_by` in a single ACID transaction. The inspector shows the struck-through history.
 
+**Hybrid memory retrieval in one server-side stage.** Long-term facts are retrieved with a single `$rankFusion`: a `$vectorSearch` leg and a Portuguese-analyzed BM25 `$search` leg (exact + `fuzzy` for typos), both filtered by `user_key` + `active` on the server. Weights, depth per leg and fuzzy live in `ai_brain.memory_retrieval_config` and apply on the next turn. With `scoreDetails`, the inspector shows *why each fact was recalled* (rank, weight and contribution per leg). If the stage is rejected, the turn falls back to app-side RRF over the two legs in parallel, then to one leg, then to the newest facts; the trace says which path ran. Measured on a synthetic 41-query set: recall@5 1.0, MRR 0.859 → 0.918, p50 1,267 → 740 ms ([ADR-008](docs/adr/ADR-008-rankfusion-scoredetails-memoria.md)). `$rerank` (Voyage, Public Preview for `rerank-3*`) is wired in and measured but off by default: it reorders the same five facts for +~200 ms ([ADR-009](docs/adr/ADR-009-rerank-memoria-public-preview.md)).
+
+**Cache invalidated by Change Streams.** A worker in the FastAPI lifespan watches `ai_brain.area_profiles`; changing an area's persona (where its policies live) deletes that area's runtime cache entries, and seeded FAQs only if the policy they quote actually changed (hash of the source persona). Resume token persisted, reconnect with backoff, and a conservative reconcile on invalidate / history lost / rejected token. Measured: ~1 s from `update_one` to invalidation ([ADR-010](docs/adr/ADR-010-change-stream-invalidacao-cache.md)).
+
+**Queryable Encryption, kept out of the agent's path.** `backend/scripts/qe_sensitive_profile.py` stores CPF and phone (equality) and income (range) encrypted in a test-only collection, next to a masked, vectorizable summary. Nothing the MCP Server, `$vectorSearch` or `$search` reads is encrypted ([ADR-011](docs/adr/ADR-011-queryable-encryption-perfil-sensivel.md)). Why the memory is not LangGraph's store: [ADR-012](docs/adr/ADR-012-por-que-nao-mongodbstore-langgraph.md).
+
 **Multi-tenant by pre-filter, not post-filter.** `area` / `user_key` / `active` are `filter` fields in the vector indexes, so ANN search only walks vectors that are valid for the caller and top-K stays correct as collections grow.
 
 **Isolation by area.** Each user belongs to an area that decides three things per turn, all by document read: the persona appended to the system prompt, which `guardrail_policies` document applies, and which cache entries are visible. Try *"Can you give me an off-the-books discount on the invoice?"* as Marina (Finance): blocked. The same message as Adriano (Support) is answered normally.
@@ -69,6 +75,8 @@ Each step is a real MongoDB operation, visible in the trace and in the in-app in
 | `model_config` | ai_brain | active model, read on every request |
 | `area_profiles` | ai_brain | persona and rules per area |
 | `guardrail_policies` | ai_brain | policy per area |
+| `memory_retrieval_config` | ai_brain | live `$rankFusion` weights/depth/fuzzy and `$rerank` switch |
+| `change_stream_tokens` | ai_brain | resume token + heartbeat of the cache invalidation worker |
 | `semantic_cache` | POC | Q&A + autoEmbed vector, tagged by area |
 | `agent_sessions` | POC | short-term memory |
 | `agent_memory` | POC | long-term facts per `user_key` |
@@ -78,6 +86,8 @@ Each step is a real MongoDB operation, visible in the trace and in the in-app in
 | `app_users` | POC | user → area |
 | `web_search_cache` | POC | web search results (TTL) |
 | `external_calls` | POC | audit of external tool calls (30-day TTL) |
+| `cache_invalidations` | POC | audit of change-stream cache invalidations (30-day TTL) |
+| `customer_sensitive_profile` | POC_test only | Queryable Encryption demo (standalone script) |
 
 ## Run it
 

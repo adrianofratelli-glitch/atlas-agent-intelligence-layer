@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Long-term memory retrieval is one server-side `$rankFusion` (vector + Portuguese BM25 with fuzzy), tenant-filtered on both legs, with live config in `ai_brain.memory_retrieval_config` and a fallback cascade (app RRF in parallel → one leg → newest). recall@5 1.0, MRR 0.859 → 0.918, p50 1,267 → 740 ms on `eval/memory_recall.json`.
+- Inspector: "why these facts were recalled" from `scoreDetails` (rank, weight, contribution per leg), also stored in `agent_traces`.
+- `$rerank` wired in and measured (pool 20/40/80, three models); off by default (ADR-009).
+- Semantic cache invalidated by a Change Stream on `ai_brain.area_profiles` (resume token, backoff, reconcile on history lost); stats in `/api/health`, checked by the preflight.
+- Queryable Encryption demo script for CPF/phone/income in a test-only collection (ADR-011).
+- Fix: the full LIVE chaos suite wrote sessions and LangGraph checkpoints to the demo database (`db` was imported before the test-database switch); it now isolates at import and every LIVE scenario refuses a demo-bound module.
+- `seed.py` updates an existing BM25 index (it used to only print "already exists"); requires `pov-shared` >= 0.3.0 for the new retrieval (the app still starts without it).
+
 - Atualiza dependências compatíveis e pisos de segurança; alinha metadados de versão entre aplicação e frontend.
 
 ## 1.3.1 (2026-10-13)

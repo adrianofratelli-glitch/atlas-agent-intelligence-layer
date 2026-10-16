@@ -167,3 +167,10 @@ nenhuma escrita nos bancos da demo.
 | Etapa | Resultado |
 |---|---|
 | `LIVE=1 tests/test_qe_profile.py` (inclui operador `$ne`, vazio, invisível, 5.000 chars, faixa saturada, 15 consultas simultâneas) | 8 OK |
+
+## A6 — documentação
+
+- ADR-008 a ADR-012, README (seção de capabilities + tabela de collections), CHANGELOG
+  `Unreleased`, `docs/briefing/architecture.md`, `docs/briefing/queries.md`, `CLAUDE.md`
+  (invariante do retrieval e do isolamento do caos). Preflight cobre config, analyzer, `$rerank`,
+  FAQs com fonte e heartbeat do worker (A4).

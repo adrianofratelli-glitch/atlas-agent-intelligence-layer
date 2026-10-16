@@ -1,0 +1,1025 @@
+{
+  "summary": {
+    "strategy": "rank_fusion+rerank",
+    "cases": 41,
+    "scored": 36,
+    "repeat": 3,
+    "recall_at_5": 1.0,
+    "mrr": 0.951,
+    "latency_ms": {
+      "p50": 939.2,
+      "p95": 1102.0,
+      "mean": 946.3
+    },
+    "round_trips": {
+      "mean": 4.33,
+      "max": 5
+    },
+    "modes": [
+      "all",
+      "rank_fusion+rerank"
+    ],
+    "violations": 0,
+    "by_kind": {
+      "identifier": {
+        "cases": 6,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      },
+      "paraphrase": {
+        "cases": 19,
+        "recall_at_5": 1.0,
+        "mrr": 0.974
+      },
+      "superseded": {
+        "cases": 5,
+        "recall_at_5": 1.0,
+        "mrr": 0.75
+      },
+      "typo": {
+        "cases": 6,
+        "recall_at_5": 1.0,
+        "mrr": 1.0
+      }
+    },
+    "label": "a3-rerank-lite-p40",
+    "database": "POC_test",
+    "config": {
+      "weights": {
+        "vector": 1,
+        "bm25": 1
+      },
+      "num_candidates": 100,
+      "fuzzy_max_edits": 1,
+      "score_details": true,
+      "per_branch_limit": 40,
+      "rerank": {
+        "enabled": true,
+        "model": "rerank-2.5-lite",
+        "pool": 40,
+        "top_n": 5
+      }
+    },
+    "index_wait_seconds": 1.4,
+    "at": "2026-10-16T20:54:33+00:00"
+  },
+  "violations": [],
+  "rows": [
+    {
+      "id": "mr-001",
+      "kind": "identifier",
+      "query": "qual era mesmo o fone do PED-2041?",
+      "expected": [
+        "ana-03"
+      ],
+      "returned": [
+        "ana-03",
+        "ana-d02",
+        "ana-d03",
+        "ana-04",
+        "ana-09",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 921.5,
+      "round_trips": 5,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-002",
+      "kind": "identifier",
+      "query": "o PED-2077 era pra quem?",
+      "expected": [
+        "ana-04"
+      ],
+      "returned": [
+        "ana-04",
+        "ana-d03",
+        "ana-03",
+        "ana-d02",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 970.4,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-003",
+      "kind": "identifier",
+      "query": "o que eu comprei no PED-3310?",
+      "expected": [
+        "bruno-02"
+      ],
+      "returned": [
+        "bruno-02",
+        "bruno-d02",
+        "bruno-d03",
+        "bruno-03",
+        "bruno-14",
+        "bruno-d18",
+        "bruno-d17"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 924.1,
+      "round_trips": 5,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-004",
+      "kind": "identifier",
+      "query": "onde vocês devem entregar o PED-3388?",
+      "expected": [
+        "bruno-03"
+      ],
+      "returned": [
+        "bruno-03",
+        "bruno-d03",
+        "bruno-d02",
+        "bruno-02",
+        "bruno-16",
+        "bruno-d18",
+        "bruno-d17"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 933.4,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-005",
+      "kind": "identifier",
+      "query": "você lembra de que raça é o Pixel?",
+      "expected": [
+        "ana-11"
+      ],
+      "returned": [
+        "ana-11",
+        "ana-d16",
+        "ana-d10",
+        "ana-d08",
+        "ana-09",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 1039.6,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-006",
+      "kind": "identifier",
+      "query": "a Rápido Sul já me deu problema antes?",
+      "expected": [
+        "ana-13"
+      ],
+      "returned": [
+        "ana-13",
+        "ana-d20",
+        "ana-05",
+        "ana-14",
+        "ana-18",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 936.9,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-007",
+      "kind": "paraphrase",
+      "query": "como você deve me chamar?",
+      "expected": [
+        "ana-01"
+      ],
+      "returned": [
+        "ana-01",
+        "ana-02",
+        "ana-d01",
+        "ana-11",
+        "ana-16",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 929.8,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-008",
+      "kind": "paraphrase",
+      "query": "qual o melhor canal pra falar comigo?",
+      "expected": [
+        "ana-02"
+      ],
+      "returned": [
+        "ana-02",
+        "ana-d01",
+        "ana-16",
+        "ana-d17",
+        "ana-12",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 984.9,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-009",
+      "kind": "paraphrase",
+      "query": "tem algum material que eu não posso usar?",
+      "expected": [
+        "ana-05"
+      ],
+      "returned": [
+        "ana-05",
+        "ana-d09",
+        "ana-12",
+        "ana-d14",
+        "ana-18",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 930.3,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-010",
+      "kind": "paraphrase",
+      "query": "em que cidade eu moro?",
+      "expected": [
+        "ana-06"
+      ],
+      "returned": [
+        "ana-06",
+        "ana-d05",
+        "ana-14",
+        "ana-d13",
+        "ana-01",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 941.6,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-011",
+      "kind": "paraphrase",
+      "query": "qual é a minha rotina de horário de trabalho e sono?",
+      "expected": [
+        "ana-07"
+      ],
+      "returned": [
+        "ana-07",
+        "ana-14",
+        "ana-15",
+        "ana-d06",
+        "ana-d19",
+        "ana-d20"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 954.3,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-012",
+      "kind": "paraphrase",
+      "query": "até quanto eu posso gastar num aparelho eletrônico?",
+      "expected": [
+        "ana-08"
+      ],
+      "returned": [
+        "ana-08",
+        "ana-d07",
+        "ana-d02",
+        "ana-17",
+        "ana-03",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 954.1,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-013",
+      "kind": "paraphrase",
+      "query": "pra que eu uso os fones de ouvido?",
+      "expected": [
+        "ana-09"
+      ],
+      "returned": [
+        "ana-09",
+        "ana-d08",
+        "ana-d01",
+        "ana-d19",
+        "ana-05",
+        "ana-d20"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 942.1,
+      "round_trips": 5,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-014",
+      "kind": "paraphrase",
+      "query": "qual cor eu gosto nos produtos?",
+      "expected": [
+        "ana-10"
+      ],
+      "returned": [
+        "ana-10",
+        "ana-d09",
+        "ana-d14",
+        "ana-05",
+        "ana-18",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 953.6,
+      "round_trips": 5,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-015",
+      "kind": "paraphrase",
+      "query": "como eu quero receber os documentos fiscais da compra?",
+      "expected": [
+        "ana-12"
+      ],
+      "returned": [
+        "ana-12",
+        "ana-d03",
+        "ana-03",
+        "ana-02",
+        "ana-d02",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 965.0,
+      "round_trips": 5,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-016",
+      "kind": "paraphrase",
+      "query": "a que horas a entrega pode chegar no meu prédio?",
+      "expected": [
+        "ana-14"
+      ],
+      "returned": [
+        "ana-14",
+        "ana-d13",
+        "ana-13",
+        "ana-d12",
+        "ana-d18",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 996.4,
+      "round_trips": 5,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-017",
+      "kind": "paraphrase",
+      "query": "o que estou procurando para trabalhar em casa?",
+      "expected": [
+        "ana-15"
+      ],
+      "returned": [
+        "ana-15",
+        "ana-07",
+        "ana-d14",
+        "ana-14",
+        "ana-08",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 932.5,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-018",
+      "kind": "paraphrase",
+      "query": "que tipo de porta o meu computador portátil tem?",
+      "expected": [
+        "ana-17"
+      ],
+      "returned": [
+        "ana-17",
+        "ana-d16",
+        "ana-14",
+        "ana-d02",
+        "ana-d13",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 927.4,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-019",
+      "kind": "paraphrase",
+      "query": "qual é o meu negócio?",
+      "expected": [
+        "bruno-01"
+      ],
+      "returned": [
+        "bruno-01",
+        "bruno-d01",
+        "bruno-15",
+        "bruno-d09",
+        "bruno-13",
+        "bruno-d18",
+        "bruno-d17"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 954.8,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-020",
+      "kind": "paraphrase",
+      "query": "tenho alguma restrição alimentar?",
+      "expected": [
+        "bruno-05"
+      ],
+      "returned": [
+        "bruno-05",
+        "bruno-d05",
+        "bruno-07",
+        "bruno-d02",
+        "bruno-d15",
+        "bruno-d18",
+        "bruno-d17"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 924.4,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-021",
+      "kind": "paraphrase",
+      "query": "qual é o meu teto de despesas por mês?",
+      "expected": [
+        "bruno-07"
+      ],
+      "returned": [
+        "bruno-07",
+        "bruno-d07",
+        "bruno-14",
+        "bruno-01",
+        "bruno-d17",
+        "bruno-d18"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 937.1,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-022",
+      "kind": "paraphrase",
+      "query": "qual forma de pagamento eu uso?",
+      "expected": [
+        "bruno-09"
+      ],
+      "returned": [
+        "bruno-09",
+        "bruno-d09",
+        "bruno-d02",
+        "bruno-14",
+        "bruno-02",
+        "bruno-d18",
+        "bruno-d17"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 988.8,
+      "round_trips": 5,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-023",
+      "kind": "paraphrase",
+      "query": "já tive problema com algum eletrodoméstico entregue?",
+      "expected": [
+        "bruno-10"
+      ],
+      "returned": [
+        "bruno-d18",
+        "bruno-10",
+        "bruno-d10",
+        "bruno-d11",
+        "bruno-d03",
+        "bruno-d17"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 2,
+      "ms": 922.1,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-024",
+      "kind": "paraphrase",
+      "query": "em que dia da semana prefiro receber as compras?",
+      "expected": [
+        "bruno-16"
+      ],
+      "returned": [
+        "bruno-16",
+        "bruno-04",
+        "bruno-d16",
+        "bruno-09",
+        "bruno-d04",
+        "bruno-d18",
+        "bruno-d17"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 975.5,
+      "round_trips": 5,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-025",
+      "kind": "paraphrase",
+      "query": "qual o combustível do meu forno?",
+      "expected": [
+        "bruno-15"
+      ],
+      "returned": [
+        "bruno-15",
+        "bruno-d15",
+        "bruno-11",
+        "bruno-01",
+        "bruno-d17",
+        "bruno-d18"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 1099.9,
+      "round_trips": 5,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-026",
+      "kind": "typo",
+      "query": "sou alergica a que materal?",
+      "expected": [
+        "ana-05"
+      ],
+      "returned": [
+        "ana-05",
+        "ana-d04",
+        "ana-d09",
+        "ana-10",
+        "ana-18",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 936.8,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-027",
+      "kind": "typo",
+      "query": "prefiro ser contatda por emial ou telefne?",
+      "expected": [
+        "ana-02"
+      ],
+      "returned": [
+        "ana-02",
+        "ana-d01",
+        "ana-12",
+        "ana-d17",
+        "ana-18",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 935.4,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-028",
+      "kind": "typo",
+      "query": "qual meu limte de gasto mensau?",
+      "expected": [
+        "bruno-07"
+      ],
+      "returned": [
+        "bruno-07",
+        "bruno-d07",
+        "bruno-d15",
+        "bruno-14",
+        "bruno-15",
+        "bruno-d18",
+        "bruno-d17"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 945.1,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-029",
+      "kind": "typo",
+      "query": "tenho intolerancia a lactoze?",
+      "expected": [
+        "bruno-05"
+      ],
+      "returned": [
+        "bruno-05",
+        "bruno-d05",
+        "bruno-d18",
+        "bruno-01",
+        "bruno-d13",
+        "bruno-d17"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 923.1,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-030",
+      "kind": "typo",
+      "query": "cadeira ergonomica pro home ofice",
+      "expected": [
+        "ana-15"
+      ],
+      "returned": [
+        "ana-15",
+        "ana-d14",
+        "ana-d03",
+        "ana-07",
+        "ana-14",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 1104.2,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-031",
+      "kind": "typo",
+      "query": "impresora termica das etiqetas",
+      "expected": [
+        "bruno-08"
+      ],
+      "returned": [
+        "bruno-08",
+        "bruno-d08",
+        "bruno-11",
+        "bruno-d11",
+        "bruno-d14",
+        "bruno-d18",
+        "bruno-d17"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 1082.3,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-032",
+      "kind": "superseded",
+      "query": "eu moro em São Paulo, na Vila Mariana?",
+      "expected": [
+        "ana-06"
+      ],
+      "returned": [
+        "ana-14",
+        "ana-01",
+        "ana-d05",
+        "ana-06",
+        "ana-07",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 4,
+      "ms": 941.4,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-033",
+      "kind": "superseded",
+      "query": "meu orçamento para eletrônicos é de 500 reais?",
+      "expected": [
+        "ana-08"
+      ],
+      "returned": [
+        "ana-08",
+        "ana-d07",
+        "ana-17",
+        "ana-d02",
+        "ana-d16",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 977.6,
+      "round_trips": 5,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-034",
+      "kind": "superseded",
+      "query": "posso ser contatada por WhatsApp?",
+      "expected": [
+        "ana-02"
+      ],
+      "returned": [
+        "ana-02",
+        "ana-d01",
+        "ana-18",
+        "ana-16",
+        "ana-d17",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 928.3,
+      "round_trips": 5,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-035",
+      "kind": "superseded",
+      "query": "meu limite de gasto mensal é de 2 mil reais?",
+      "expected": [
+        "bruno-07"
+      ],
+      "returned": [
+        "bruno-07",
+        "bruno-d07",
+        "bruno-09",
+        "bruno-d17",
+        "bruno-14",
+        "bruno-d18"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 1,
+      "ms": 925.2,
+      "round_trips": 5,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-036",
+      "kind": "superseded",
+      "query": "vocês podem falar comigo por e-mail?",
+      "expected": [
+        "bruno-04"
+      ],
+      "returned": [
+        "bruno-d04",
+        "bruno-04",
+        "bruno-14",
+        "bruno-16",
+        "bruno-01",
+        "bruno-d18",
+        "bruno-d17"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": true,
+      "rank": 2,
+      "ms": 937.4,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-037",
+      "kind": "cross_tenant",
+      "query": "como se chama o meu cachorro border collie?",
+      "expected": [],
+      "returned": [
+        "bruno-01",
+        "bruno-d10",
+        "bruno-06",
+        "bruno-03",
+        "bruno-d03",
+        "bruno-d18",
+        "bruno-d17"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": null,
+      "rank": null,
+      "ms": 914.8,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-038",
+      "kind": "cross_tenant",
+      "query": "qual fone eu comprei no PED-2041?",
+      "expected": [],
+      "returned": [
+        "bruno-02",
+        "bruno-d02",
+        "bruno-d03",
+        "bruno-03",
+        "bruno-11",
+        "bruno-d18",
+        "bruno-d17"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": null,
+      "rank": null,
+      "ms": 964.3,
+      "round_trips": 5,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-039",
+      "kind": "cross_tenant",
+      "query": "o que eu comprei no PED-3310?",
+      "expected": [],
+      "returned": [
+        "ana-03",
+        "ana-d02",
+        "ana-04",
+        "ana-d03",
+        "ana-17",
+        "ana-d20",
+        "ana-d19"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": null,
+      "rank": null,
+      "ms": 1004.7,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-040",
+      "kind": "cross_tenant",
+      "query": "a que horas eu abro a minha padaria?",
+      "expected": [],
+      "returned": [
+        "ana-d13",
+        "ana-14",
+        "ana-07",
+        "ana-d19",
+        "ana-16",
+        "ana-d20"
+      ],
+      "mode": "rank_fusion+rerank",
+      "hit_at_5": null,
+      "rank": null,
+      "ms": 911.9,
+      "round_trips": 4,
+      "explain": null,
+      "problems": []
+    },
+    {
+      "id": "mr-041",
+      "kind": "empty_tenant",
+      "query": "qual é o meu nome?",
+      "expected": [],
+      "returned": [],
+      "mode": "all",
+      "hit_at_5": null,
+      "rank": null,
+      "ms": 267.3,
+      "round_trips": 3,
+      "explain": null,
+      "problems": []
+    }
+  ]
+}

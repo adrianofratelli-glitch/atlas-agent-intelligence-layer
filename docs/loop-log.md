@@ -96,3 +96,20 @@ nenhuma escrita nos bancos da demo.
   `POC_test.app_users` para o turno LIVE, virou uma pílula a mais na fileira de usuários.
 - **Correção:** usuário removido do banco de teste depois da verificação LIVE.
 - **Resultado:** visual 3/3. A2 verde.
+
+## A3 — `$rerank` (Public Preview nos `rerank-3*`)
+
+### Iteração 1 — 2026-10-16
+
+| Etapa | Resultado |
+|---|---|
+| Unit/adversarial (rerank rodou, rejeitado = no-op + cache de capability) | em `test_memory_retrieval.py` (A1), OK |
+| Caos LIVE `memory_rerank_rejected` | PASS |
+| Varredura LIVE: RRF app, `$rankFusion`, `+ $rerank` lite pool 20/40/80, `rerank-2.5`, `rerank-3-lite` | 7 relatórios em `eval/reports/memory-recall-a3-*`, 0 violações |
+
+- **O que falhou:** nada quebrou; a decisão é de produto.
+- **Resultado medido:** rerank sobe o MRR (0,918 → 0,951–0,972) por +~200 ms p50/p95; pool
+  20/40/80 idêntico (≤ 38 fatos por tenant); `rerank-2.5` derruba recall@5 para 0,972; os 2.5
+  pioram superseded (0,90 → 0,70–0,75). Recall@5 já é 1,0 sem rerank.
+- **Decisão:** desligado no seed (ADR-009); `$rerank` não se aplica ao cache semântico (limiar,
+  não ranking). Config de teste restaurada para a do seed ao fim da varredura.

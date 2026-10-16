@@ -142,6 +142,11 @@ export default function Agent({ state, setState }) {
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [liveStatus, setLiveStatus] = useState(null); // streaming: passo em andamento, em vez de loading genérico
+  // Eventos do SSE na ordem em que chegam: as colunas mostram o turno ENQUANTO ele roda
+  // (antes a coluna ficava vazia ~15 s e o trace inteiro aparecia de uma vez no fim).
+  const [liveTrace, setLiveTrace] = useState([]);
+  const opsColRef = useRef(null);
+  const reasonColRef = useRef(null);
   const [error, setError] = useState(null);
   const [playing, setPlaying] = useState(false);
   const [walk, setWalk] = useState(false);
@@ -227,11 +232,19 @@ export default function Agent({ state, setState }) {
     return () => { cancelled = true; };
   }, [user?.user_key, setState]);
 
-  const events = run?.trace ?? [];
+  const live = busy && liveTrace.length > 0;
+  const events = live ? liveTrace : (run?.trace ?? []);
   const lastStep = events.length - 1;
-  const visible = step >= 0 ? events.slice(0, step + 1) : [];
-  const current = step >= 0 ? events[step] : null;
+  const visible = live ? liveTrace : (step >= 0 ? events.slice(0, step + 1) : []);
+  const current = live ? liveTrace[liveTrace.length - 1] : (step >= 0 ? events[step] : null);
   const activePhase = current?.phase;
+
+  // segue o último evento dentro da coluna (a página não rola; as colunas sim)
+  useEffect(() => {
+    for (const el of [opsColRef.current, reasonColRef.current]) {
+      if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    }
+  }, [visible.length]);
 
   // auto-avanço do replay (Pausar/Continuar e Tour guiado)
   useEffect(() => {
@@ -339,13 +352,17 @@ export default function Agent({ state, setState }) {
     setPlaying(false);
     setWalk(false);
     setLiveStatus('iniciando...');
+    setLiveTrace([]);
     const convId =
       (switched ? convMapRef.current[target.user_key]
                 : conversationId ?? convMapRef.current[target.user_key]) ?? null;
     try {
       const result = await api.agentRunStream(
         { ...payload, conversation_id: convId, user_key: target.user_key },
-        (event) => setLiveStatus(describeLiveEvent(event)),
+        (event) => {
+          setLiveStatus(describeLiveEvent(event));
+          setLiveTrace((t) => [...t, event]);
+        },
       );
       const finalConvId = result.conversation_id ?? convId;
       convMapRef.current[target.user_key] = finalConvId;
@@ -359,7 +376,8 @@ export default function Agent({ state, setState }) {
         ...s,
         conversationId: finalConvId,
         run: result,
-        step: 0,
+        // o turno já apareceu ao vivo: abre no estado final (o passo a passo fica no Tour guiado)
+        step: Math.max(0, (result.trace?.length ?? 1) - 1),
         iteration: (s.iteration ?? 0) + 1,
         turns: newTurns,
       }));
@@ -371,7 +389,8 @@ export default function Agent({ state, setState }) {
           { run: result, user: target, conversationId: finalConvId, turns: newTurns },
         ]);
       }
-      setPlaying(true); // auto-reproduz o trace
+      // na demo automática, "playing" no último passo é o que dispara o próximo script
+      if (demoRef.current.active) setPlaying(true);
     } catch (e) {
       setError(e.message);
       setDemo({ active: false, idx: -1, paused: false }); // interrompe a demo se um script falhar
@@ -511,6 +530,7 @@ export default function Agent({ state, setState }) {
 
         {/* identidade: quem está falando decide memória (user_key) e área (persona,
             guardrails, cache). Em produção isso viria do login, não de um seletor. */}
+        <div className="agent-context">
         <div className="agent-users">
           <span className="dim mono">Usuário:</span>
           {(users.length ? users : [user]).map((u) => (
@@ -548,6 +568,7 @@ export default function Agent({ state, setState }) {
             🧠 <span className="accent-num">{turns.length}</span> mensagens na memória
             <Button size="xsmall" darkMode onClick={newConversation} disabled={busy}>Nova conversa</Button>
           </div>
+        </div>
         </div>
 
         {/* strip das 6 fases */}
@@ -617,9 +638,9 @@ export default function Agent({ state, setState }) {
 
         {/* 3 colunas */}
         <div className="agent-grid">
-          <div className="agent-col">
+          <div className="agent-col agent-col-scroll" ref={opsColRef}>
             <div className="col-head"><span className="leaf">🍃</span> MongoDB</div>
-            {ops.length === 0 && <div className="dim">Clique numa fase ou envie uma mensagem para começar…</div>}
+            {ops.length === 0 && !busy && <div className="dim">Envie uma mensagem ou escolha um cenário: cada operação no Atlas aparece aqui assim que acontece.</div>}
             {ops.map((e, i) => (
               <div key={i} className={`op-item ${e.phase === 'act' || e.phase === 'store' ? 'write' : 'read'} ${current === e ? 'pulse' : ''}`}>
                 <div className="op-head">
@@ -639,9 +660,14 @@ export default function Agent({ state, setState }) {
                 {e.memory_retrieval && <MemoryWhy block={e.memory_retrieval} />}
               </div>
             ))}
+            {busy && (
+              <div className="op-item pending" aria-live="polite">
+                <span className="pending-dot" /> <span className="mono dim">{liveStatus ?? 'aguardando o Atlas…'}</span>
+              </div>
+            )}
           </div>
 
-          <div className="agent-col">
+          <div className="agent-col agent-col-scroll" ref={reasonColRef}>
             <div className="col-head"><span className="brain">🧠</span> Raciocínio do LLM
               {run && <Badge variant="blue" className="ml">{run.model}</Badge>}
               {run?.langfuse_trace_url && (
@@ -652,7 +678,8 @@ export default function Agent({ state, setState }) {
               )}
             </div>
             {run && <MongoCacheSavings run={run} />}
-            {reasonings.length === 0 && <div className="dim">O raciocínio aparece na fase "Raciocinar".</div>}
+            {reasonings.length === 0 && !busy && <div className="dim">O raciocínio do modelo aparece aqui, chamada a chamada.</div>}
+            {reasonings.length === 0 && busy && <div className="reason-item pending"><span className="pending-dot" /> <span className="dim">o modelo ainda não respondeu…</span></div>}
             {reasonings.map((e, i) => (
               <div key={i} className={`reason-item ${current === e ? 'pulse' : ''}`}>
                 <div className="reason-text"><RichText text={e.text} /></div>
@@ -661,7 +688,7 @@ export default function Agent({ state, setState }) {
             ))}
           </div>
 
-          <div className="agent-col">
+          <div className="agent-col agent-col-chat">
             <div className="col-head"><span className="agent-emoji">🤖</span> Agente</div>
             <div className="thought-box">
               <div className="thought-label mono">💭 Pensamento atual</div>
@@ -788,7 +815,7 @@ function FeatureFlags({ run }) {
       </div>
       <div className={`feat-card cache-${cacheClass}`}>
         <div className="feat-title">{cacheTitle}</div>
-        <div className="feat-detail mono">{cacheDetail}</div>
+        <div className="feat-detail mono" title={cacheDetail}>{cacheDetail}</div>
       </div>
       <div className={`feat-card guard-${guardClass}`}>
         <div className="feat-title">{guardTitle}</div>

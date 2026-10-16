@@ -174,3 +174,24 @@ nenhuma escrita nos bancos da demo.
   `Unreleased`, `docs/briefing/architecture.md`, `docs/briefing/queries.md`, `CLAUDE.md`
   (invariante do retrieval e do isolamento do caos). Preflight cobre config, analyzer, `$rerank`,
   FAQs com fonte e heartbeat do worker (A4).
+
+## A7 — experiência da aba Agente (pedido do usuário: "travada", "rolando a tela", "vai tudo de uma vez")
+
+### Iteração 1 — 2026-10-16
+
+- **Medido antes:** página de 1.248–1.376 px numa tela de 900 (rolagem obrigatória); durante o
+  turno a coluna MongoDB ficava vazia ~15,8 s e o trace inteiro aparecia no fim, seguido de um
+  replay automático de 850 ms por passo.
+- **Mudança:** cada evento do SSE entra na coluna na hora (`liveTrace`), com entrada de 180 ms
+  (opacity/transform, desligada com `prefers-reduced-motion`) e um item "em andamento" no fim;
+  ao terminar, abre no estado final (replay passo a passo continua no Tour guiado; a demo
+  automática continua avançando sozinha). Layout em uma tela (`.content--fit`): cabeçalho da
+  página em uma linha, usuários + ferramentas lado a lado, trilho de fases compacto, flags em 2
+  linhas, colunas com rolagem interna seguindo o último evento, campo de mensagem sempre visível.
+- **Falhou no meio:** (1) o "pensamento atual" empurrava o campo de mensagem para fora da tela;
+  (2) `min-height` no chat estourou a grade. Corrigido (pensamento oculto no modo compacto — a
+  coluna Raciocínio já mostra; linha da grade `minmax(0, 1fr)`).
+- **Medido depois (Chromium headless):** 1440×900, 1280×800 e 1920×1080 sem rolagem da página;
+  turno real com 1ª operação na tela aos 6,4 s e as seguintes conforme chegam.
+- **Regressão:** frontend 8/8, visual 3/3 (baseline da tab3 atualizado, mudança intencional),
+  e2e 1/1.

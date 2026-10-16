@@ -93,7 +93,7 @@ export default function App() {
         </div>
       </nav>
 
-      <main id="conteudo-principal" tabIndex={-1} className="content">
+      <main id="conteudo-principal" tabIndex={-1} className={`content ${TABS[selected] === 'Agente' ? 'content--fit' : ''}`}>
         <header className="stage-heading">
           <h1 className="page-title">Inteligência como <span>documento</span></h1>
           <p>{counts.support_orders ?? '—'} pedidos · {health?.primary_model ?? 'modelo conectando'}</p>

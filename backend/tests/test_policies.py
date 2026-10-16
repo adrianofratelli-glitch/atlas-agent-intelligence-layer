@@ -21,12 +21,12 @@ class ToolPolicyTests(unittest.TestCase):
     def test_order_read_requires_scalar_id_and_rewrites_projection(self):
         malicious = {"filter": {"order_id": {"$ne": None}}}
         self.assertIsNotNone(
-            agent._read_denial("find", "POC.support_orders", malicious, "conv", "user")
+            agent._read_denial("find", f"{agent.DB_MAIN}.support_orders", malicious, "conv", "user")
         )
 
         safe = {"filter": {"order_id": "PED-1001", "$or": [{"status": {"$exists": True}}]}}
         self.assertIsNone(
-            agent._read_denial("find", "POC.support_orders", safe, "conv", "user")
+            agent._read_denial("find", f"{agent.DB_MAIN}.support_orders", safe, "conv", "user")
         )
         # ownership: o filtro reescrito prende a leitura ao usuário do turno
         self.assertEqual(safe["filter"],
@@ -42,7 +42,7 @@ class ToolPolicyTests(unittest.TestCase):
             },
         }
         self.assertIsNone(
-            agent._write_denial("update-many", "POC.support_orders", tool_input, "user")
+            agent._write_denial("update-many", f"{agent.DB_MAIN}.support_orders", tool_input, "user")
         )
         self.assertEqual(tool_input["filter"],
                          {"order_id": "PED-1002", "owner_user_key": "user"})
@@ -54,7 +54,7 @@ class ToolPolicyTests(unittest.TestCase):
         # O modelo manda um $graphLookup inventado, apontando para outra collection e sem
         # filtro de dono. Nada disso sobrevive: o servidor remonta o pipeline inteiro.
         tool_input = {
-            "database": "POC", "collection": "support_orders",
+            "database": agent.DB_MAIN, "collection": "support_orders",
             "pipeline": [
                 {"$match": {"order_id": "PED-1005"}},
                 {"$graphLookup": {"from": "app_users", "startWith": "$owner_user_key",
@@ -63,7 +63,7 @@ class ToolPolicyTests(unittest.TestCase):
             ],
         }
         self.assertIsNone(
-            agent._read_denial("aggregate", "POC.support_orders", tool_input, "conv", "user")
+            agent._read_denial("aggregate", f"{agent.DB_MAIN}.support_orders", tool_input, "conv", "user")
         )
         pipeline = tool_input["pipeline"]
         self.assertEqual(pipeline[0]["$match"],
@@ -87,7 +87,7 @@ class ToolPolicyTests(unittest.TestCase):
         ):
             with self.subTest(bad=bad):
                 self.assertIsNotNone(
-                    agent._read_denial("aggregate", "POC.support_orders", bad, "conv", "user")
+                    agent._read_denial("aggregate", f"{agent.DB_MAIN}.support_orders", bad, "conv", "user")
                 )
 
     def test_chain_summary_replaces_raw_traversal_output(self):
@@ -187,13 +187,13 @@ class MemoryPolicyTests(unittest.TestCase):
 class WritePolicyHardeningTests(unittest.TestCase):
     def test_write_strips_extra_options_like_upsert(self):
         tool_input = {
-            "database": "POC", "collection": "support_orders",
+            "database": agent.DB_MAIN, "collection": "support_orders",
             "filter": {"order_id": "PED-1002"},
             "update": {"$set": {"status": "reembolso_solicitado"}},
             "upsert": True,  # criaria pedido fantasma se sobrevivesse
         }
         self.assertIsNone(
-            agent._write_denial("update-many", "POC.support_orders", tool_input, "user")
+            agent._write_denial("update-many", f"{agent.DB_MAIN}.support_orders", tool_input, "user")
         )
         self.assertNotIn("upsert", tool_input)
         self.assertEqual(set(tool_input), {"database", "collection", "filter", "update"})
@@ -201,12 +201,12 @@ class WritePolicyHardeningTests(unittest.TestCase):
 
     def test_read_strips_extra_options(self):
         tool_input = {
-            "database": "POC", "collection": "support_orders",
+            "database": agent.DB_MAIN, "collection": "support_orders",
             "filter": {"order_id": "PED-1001"},
             "sort": {"unit_price": -1}, "limit": 999,
         }
         self.assertIsNone(
-            agent._read_denial("find", "POC.support_orders", tool_input, "conv", "user")
+            agent._read_denial("find", f"{agent.DB_MAIN}.support_orders", tool_input, "conv", "user")
         )
         self.assertNotIn("sort", tool_input)
         self.assertNotIn("limit", tool_input)

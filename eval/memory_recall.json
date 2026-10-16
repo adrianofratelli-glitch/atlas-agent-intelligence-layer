@@ -1,0 +1,797 @@
+{
+  "name": "memory-recall-ltm",
+  "version": 2,
+  "synthetic": true,
+  "generated_by": "Claude Opus 5.5, 2026-10-16, a partir do domínio do seed (pedidos PED-…, catálogo de eletrônicos, perfis de cliente)",
+  "limitation": "Fatos e consultas escritos pela mesma família de modelo que o agente usa; mede o RETRIEVAL da memória longa (agent_memory) isolado do LLM, não a resposta final do turno. Cada tenant tem ~20 fatos-alvo e ~20 distratores (terceiros, pedidos com número parecido, mesmo tema), 38 e 34 ativos: acima do atalho 'all' (RELEVANT_LIMIT=5) e abaixo do teto MAX_ACTIVE_FACTS=60, mas pequeno perto de uma memória de produção.",
+  "relevant_limit": 5,
+  "tenants": {
+    "eval.mem.ana": {
+      "facts": [
+        {
+          "id": "ana-01",
+          "fact": "Meu nome é Ana Beatriz e prefiro ser chamada de Bia.",
+          "category": "identidade"
+        },
+        {
+          "id": "ana-02",
+          "fact": "Prefiro ser contatada por e-mail, nunca por telefone.",
+          "category": "preferencia"
+        },
+        {
+          "id": "ana-02-old",
+          "fact": "Prefiro ser contatada por WhatsApp.",
+          "category": "preferencia",
+          "active": false,
+          "superseded_by": "ana-02"
+        },
+        {
+          "id": "ana-03",
+          "fact": "Comprei o fone Quantum 910 no pedido PED-2041.",
+          "category": "historico"
+        },
+        {
+          "id": "ana-04",
+          "fact": "O pedido PED-2077 foi um presente para minha mãe.",
+          "category": "historico"
+        },
+        {
+          "id": "ana-05",
+          "fact": "Sou alérgica a látex.",
+          "category": "restricao"
+        },
+        {
+          "id": "ana-06",
+          "fact": "Moro em Goiânia, no setor Bueno.",
+          "category": "contexto"
+        },
+        {
+          "id": "ana-06-old",
+          "fact": "Moro em São Paulo, na Vila Mariana.",
+          "category": "contexto",
+          "active": false,
+          "superseded_by": "ana-06"
+        },
+        {
+          "id": "ana-07",
+          "fact": "Trabalho à noite e durmo até as 14h.",
+          "category": "contexto"
+        },
+        {
+          "id": "ana-08",
+          "fact": "Meu orçamento máximo para eletrônicos é de 1.200 reais.",
+          "category": "preferencia"
+        },
+        {
+          "id": "ana-08-old",
+          "fact": "Meu orçamento máximo para eletrônicos é de 500 reais.",
+          "category": "preferencia",
+          "active": false,
+          "superseded_by": "ana-08"
+        },
+        {
+          "id": "ana-09",
+          "fact": "Uso os fones principalmente para correr na academia.",
+          "category": "contexto"
+        },
+        {
+          "id": "ana-10",
+          "fact": "Prefiro produtos na cor verde.",
+          "category": "preferencia"
+        },
+        {
+          "id": "ana-11",
+          "fact": "Tenho um cachorro da raça border collie chamado Pixel.",
+          "category": "contexto"
+        },
+        {
+          "id": "ana-12",
+          "fact": "Prefiro receber a nota fiscal em PDF por e-mail.",
+          "category": "preferencia"
+        },
+        {
+          "id": "ana-13",
+          "fact": "Já tive problema com entrega atrasada da transportadora Rápido Sul.",
+          "category": "historico"
+        },
+        {
+          "id": "ana-14",
+          "fact": "Meu apartamento não tem portaria; entregas só depois das 18h.",
+          "category": "restricao"
+        },
+        {
+          "id": "ana-15",
+          "fact": "Estou montando um home office e procuro uma cadeira ergonômica.",
+          "category": "contexto"
+        },
+        {
+          "id": "ana-16",
+          "fact": "Falo também espanhol, mas prefiro atendimento em português.",
+          "category": "preferencia"
+        },
+        {
+          "id": "ana-17",
+          "fact": "Meu notebook é um modelo de 14 polegadas com entrada USB-C.",
+          "category": "contexto"
+        },
+        {
+          "id": "ana-18",
+          "fact": "Não gosto de receber ofertas por SMS.",
+          "category": "preferencia"
+        },
+        {
+          "id": "ana-d01",
+          "fact": "Minha irmã prefere ser contatada por telefone.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d02",
+          "fact": "Comprei uma capa de celular no pedido PED-2014.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d03",
+          "fact": "O pedido PED-2071 foi para o meu escritório.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d04",
+          "fact": "Minha mãe tem alergia a frutos do mar.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d05",
+          "fact": "Minha família mora em Anápolis.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d06",
+          "fact": "Meu marido trabalha de dia em um hospital.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d07",
+          "fact": "Gastei 300 reais no último presente de aniversário.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d08",
+          "fact": "Meu irmão usa fones para jogar videogame.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d09",
+          "fact": "Não gosto de produtos na cor rosa.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d10",
+          "fact": "Meu gato se chama Byte.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d11",
+          "fact": "Guardo os comprovantes de garantia numa pasta.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d12",
+          "fact": "A transportadora Leva Já entregou antes do prazo da última vez.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d13",
+          "fact": "O condomínio da minha mãe tem portaria 24 horas.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d14",
+          "fact": "Já tenho uma mesa de escritório branca.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d15",
+          "fact": "Estudo inglês aos sábados.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d16",
+          "fact": "Meu tablet tem tela de 10 polegadas.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d17",
+          "fact": "Aceito receber novidades por e-mail uma vez por semana.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d18",
+          "fact": "Prefiro frete expresso quando o produto é presente.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d19",
+          "fact": "Uso relógio inteligente para monitorar a corrida.",
+          "category": "distrator"
+        },
+        {
+          "id": "ana-d20",
+          "fact": "Já pedi reembolso de um carregador que não funcionava.",
+          "category": "distrator"
+        }
+      ]
+    },
+    "eval.mem.bruno": {
+      "facts": [
+        {
+          "id": "bruno-01",
+          "fact": "Me chamo Bruno e sou dono de uma pequena padaria.",
+          "category": "identidade"
+        },
+        {
+          "id": "bruno-02",
+          "fact": "Comprei uma batedeira planetária no pedido PED-3310.",
+          "category": "historico"
+        },
+        {
+          "id": "bruno-03",
+          "fact": "O pedido PED-3388 deve ser entregue na padaria, não em casa.",
+          "category": "restricao"
+        },
+        {
+          "id": "bruno-04",
+          "fact": "Prefiro ser contatado por WhatsApp no horário comercial.",
+          "category": "preferencia"
+        },
+        {
+          "id": "bruno-04-old",
+          "fact": "Prefiro ser contatado por e-mail.",
+          "category": "preferencia",
+          "active": false,
+          "superseded_by": "bruno-04"
+        },
+        {
+          "id": "bruno-05",
+          "fact": "Tenho intolerância a lactose.",
+          "category": "restricao"
+        },
+        {
+          "id": "bruno-06",
+          "fact": "Moro em Curitiba, no bairro Batel.",
+          "category": "contexto"
+        },
+        {
+          "id": "bruno-07",
+          "fact": "Meu limite de gasto mensal é de 3 mil reais.",
+          "category": "preferencia"
+        },
+        {
+          "id": "bruno-07-old",
+          "fact": "Meu limite de gasto mensal é de 2 mil reais.",
+          "category": "preferencia",
+          "active": false,
+          "superseded_by": "bruno-07"
+        },
+        {
+          "id": "bruno-08",
+          "fact": "Uso a impressora térmica para etiquetas dos produtos da padaria.",
+          "category": "contexto"
+        },
+        {
+          "id": "bruno-09",
+          "fact": "Prefiro pagar com boleto bancário.",
+          "category": "preferencia"
+        },
+        {
+          "id": "bruno-10",
+          "fact": "Já devolvi uma geladeira porque chegou amassada.",
+          "category": "historico"
+        },
+        {
+          "id": "bruno-11",
+          "fact": "Gosto de eletrodomésticos de aço inox.",
+          "category": "preferencia"
+        },
+        {
+          "id": "bruno-12",
+          "fact": "Meu filho usa o tablet para as aulas online.",
+          "category": "contexto"
+        },
+        {
+          "id": "bruno-13",
+          "fact": "Abro a padaria às 5h da manhã.",
+          "category": "contexto"
+        },
+        {
+          "id": "bruno-14",
+          "fact": "Quero a fatura emitida no CNPJ da empresa.",
+          "category": "preferencia"
+        },
+        {
+          "id": "bruno-15",
+          "fact": "Meu forno industrial é a gás.",
+          "category": "contexto"
+        },
+        {
+          "id": "bruno-16",
+          "fact": "Prefiro receber entregas aos sábados.",
+          "category": "preferencia"
+        },
+        {
+          "id": "bruno-d01",
+          "fact": "Meu sócio cuida da confeitaria da padaria.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d02",
+          "fact": "Comprei formas de pão no pedido PED-3301.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d03",
+          "fact": "O pedido PED-3383 foi entregue no endereço de casa.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d04",
+          "fact": "Meu sócio prefere ser contatado por e-mail.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d05",
+          "fact": "Minha esposa é vegetariana.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d06",
+          "fact": "A padaria fica no bairro Água Verde.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d07",
+          "fact": "Gasto cerca de 800 reais por mês com embalagens.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d08",
+          "fact": "A impressora do escritório de casa é jato de tinta.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d09",
+          "fact": "Os fornecedores me pagam por transferência PIX.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d10",
+          "fact": "A batedeira antiga quebrou depois de dois anos.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d11",
+          "fact": "Não gosto de eletrodomésticos com acabamento plástico.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d12",
+          "fact": "Minha filha usa notebook para a faculdade.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d13",
+          "fact": "Fecho a padaria às 20h.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d14",
+          "fact": "A nota fiscal dos clientes da padaria sai pelo sistema da prefeitura.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d15",
+          "fact": "Meu fogão de casa é elétrico.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d16",
+          "fact": "Durante a semana não tem ninguém em casa para receber entregas.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d17",
+          "fact": "Uso balança digital para pesar os pães.",
+          "category": "distrator"
+        },
+        {
+          "id": "bruno-d18",
+          "fact": "Já troquei um liquidificador que veio com defeito.",
+          "category": "distrator"
+        }
+      ]
+    },
+    "eval.mem.vazio": {
+      "facts": []
+    }
+  },
+  "cases": [
+    {
+      "id": "mr-001",
+      "kind": "identifier",
+      "user_key": "eval.mem.ana",
+      "query": "qual era mesmo o fone do PED-2041?",
+      "expected": [
+        "ana-03"
+      ]
+    },
+    {
+      "id": "mr-002",
+      "kind": "identifier",
+      "user_key": "eval.mem.ana",
+      "query": "o PED-2077 era pra quem?",
+      "expected": [
+        "ana-04"
+      ]
+    },
+    {
+      "id": "mr-003",
+      "kind": "identifier",
+      "user_key": "eval.mem.bruno",
+      "query": "o que eu comprei no PED-3310?",
+      "expected": [
+        "bruno-02"
+      ]
+    },
+    {
+      "id": "mr-004",
+      "kind": "identifier",
+      "user_key": "eval.mem.bruno",
+      "query": "onde vocês devem entregar o PED-3388?",
+      "expected": [
+        "bruno-03"
+      ]
+    },
+    {
+      "id": "mr-005",
+      "kind": "identifier",
+      "user_key": "eval.mem.ana",
+      "query": "você lembra de que raça é o Pixel?",
+      "expected": [
+        "ana-11"
+      ]
+    },
+    {
+      "id": "mr-006",
+      "kind": "identifier",
+      "user_key": "eval.mem.ana",
+      "query": "a Rápido Sul já me deu problema antes?",
+      "expected": [
+        "ana-13"
+      ]
+    },
+    {
+      "id": "mr-007",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.ana",
+      "query": "como você deve me chamar?",
+      "expected": [
+        "ana-01"
+      ]
+    },
+    {
+      "id": "mr-008",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.ana",
+      "query": "qual o melhor canal pra falar comigo?",
+      "expected": [
+        "ana-02"
+      ]
+    },
+    {
+      "id": "mr-009",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.ana",
+      "query": "tem algum material que eu não posso usar?",
+      "expected": [
+        "ana-05"
+      ]
+    },
+    {
+      "id": "mr-010",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.ana",
+      "query": "em que cidade eu moro?",
+      "expected": [
+        "ana-06"
+      ]
+    },
+    {
+      "id": "mr-011",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.ana",
+      "query": "qual é a minha rotina de horário de trabalho e sono?",
+      "expected": [
+        "ana-07"
+      ]
+    },
+    {
+      "id": "mr-012",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.ana",
+      "query": "até quanto eu posso gastar num aparelho eletrônico?",
+      "expected": [
+        "ana-08"
+      ]
+    },
+    {
+      "id": "mr-013",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.ana",
+      "query": "pra que eu uso os fones de ouvido?",
+      "expected": [
+        "ana-09"
+      ]
+    },
+    {
+      "id": "mr-014",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.ana",
+      "query": "qual cor eu gosto nos produtos?",
+      "expected": [
+        "ana-10"
+      ]
+    },
+    {
+      "id": "mr-015",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.ana",
+      "query": "como eu quero receber os documentos fiscais da compra?",
+      "expected": [
+        "ana-12"
+      ]
+    },
+    {
+      "id": "mr-016",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.ana",
+      "query": "a que horas a entrega pode chegar no meu prédio?",
+      "expected": [
+        "ana-14"
+      ]
+    },
+    {
+      "id": "mr-017",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.ana",
+      "query": "o que estou procurando para trabalhar em casa?",
+      "expected": [
+        "ana-15"
+      ]
+    },
+    {
+      "id": "mr-018",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.ana",
+      "query": "que tipo de porta o meu computador portátil tem?",
+      "expected": [
+        "ana-17"
+      ]
+    },
+    {
+      "id": "mr-019",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.bruno",
+      "query": "qual é o meu negócio?",
+      "expected": [
+        "bruno-01"
+      ]
+    },
+    {
+      "id": "mr-020",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.bruno",
+      "query": "tenho alguma restrição alimentar?",
+      "expected": [
+        "bruno-05"
+      ]
+    },
+    {
+      "id": "mr-021",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.bruno",
+      "query": "qual é o meu teto de despesas por mês?",
+      "expected": [
+        "bruno-07"
+      ]
+    },
+    {
+      "id": "mr-022",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.bruno",
+      "query": "qual forma de pagamento eu uso?",
+      "expected": [
+        "bruno-09"
+      ]
+    },
+    {
+      "id": "mr-023",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.bruno",
+      "query": "já tive problema com algum eletrodoméstico entregue?",
+      "expected": [
+        "bruno-10"
+      ]
+    },
+    {
+      "id": "mr-024",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.bruno",
+      "query": "em que dia da semana prefiro receber as compras?",
+      "expected": [
+        "bruno-16"
+      ]
+    },
+    {
+      "id": "mr-025",
+      "kind": "paraphrase",
+      "user_key": "eval.mem.bruno",
+      "query": "qual o combustível do meu forno?",
+      "expected": [
+        "bruno-15"
+      ]
+    },
+    {
+      "id": "mr-026",
+      "kind": "typo",
+      "user_key": "eval.mem.ana",
+      "query": "sou alergica a que materal?",
+      "expected": [
+        "ana-05"
+      ]
+    },
+    {
+      "id": "mr-027",
+      "kind": "typo",
+      "user_key": "eval.mem.ana",
+      "query": "prefiro ser contatda por emial ou telefne?",
+      "expected": [
+        "ana-02"
+      ]
+    },
+    {
+      "id": "mr-028",
+      "kind": "typo",
+      "user_key": "eval.mem.bruno",
+      "query": "qual meu limte de gasto mensau?",
+      "expected": [
+        "bruno-07"
+      ]
+    },
+    {
+      "id": "mr-029",
+      "kind": "typo",
+      "user_key": "eval.mem.bruno",
+      "query": "tenho intolerancia a lactoze?",
+      "expected": [
+        "bruno-05"
+      ]
+    },
+    {
+      "id": "mr-030",
+      "kind": "typo",
+      "user_key": "eval.mem.ana",
+      "query": "cadeira ergonomica pro home ofice",
+      "expected": [
+        "ana-15"
+      ]
+    },
+    {
+      "id": "mr-031",
+      "kind": "typo",
+      "user_key": "eval.mem.bruno",
+      "query": "impresora termica das etiqetas",
+      "expected": [
+        "bruno-08"
+      ]
+    },
+    {
+      "id": "mr-032",
+      "kind": "superseded",
+      "user_key": "eval.mem.ana",
+      "query": "eu moro em São Paulo, na Vila Mariana?",
+      "expected": [
+        "ana-06"
+      ],
+      "forbidden": [
+        "ana-06-old"
+      ]
+    },
+    {
+      "id": "mr-033",
+      "kind": "superseded",
+      "user_key": "eval.mem.ana",
+      "query": "meu orçamento para eletrônicos é de 500 reais?",
+      "expected": [
+        "ana-08"
+      ],
+      "forbidden": [
+        "ana-08-old"
+      ]
+    },
+    {
+      "id": "mr-034",
+      "kind": "superseded",
+      "user_key": "eval.mem.ana",
+      "query": "posso ser contatada por WhatsApp?",
+      "expected": [
+        "ana-02"
+      ],
+      "forbidden": [
+        "ana-02-old"
+      ]
+    },
+    {
+      "id": "mr-035",
+      "kind": "superseded",
+      "user_key": "eval.mem.bruno",
+      "query": "meu limite de gasto mensal é de 2 mil reais?",
+      "expected": [
+        "bruno-07"
+      ],
+      "forbidden": [
+        "bruno-07-old"
+      ]
+    },
+    {
+      "id": "mr-036",
+      "kind": "superseded",
+      "user_key": "eval.mem.bruno",
+      "query": "vocês podem falar comigo por e-mail?",
+      "expected": [
+        "bruno-04"
+      ],
+      "forbidden": [
+        "bruno-04-old"
+      ]
+    },
+    {
+      "id": "mr-037",
+      "kind": "cross_tenant",
+      "user_key": "eval.mem.bruno",
+      "query": "como se chama o meu cachorro border collie?",
+      "expected": [],
+      "forbidden_tenant": "eval.mem.ana"
+    },
+    {
+      "id": "mr-038",
+      "kind": "cross_tenant",
+      "user_key": "eval.mem.bruno",
+      "query": "qual fone eu comprei no PED-2041?",
+      "expected": [],
+      "forbidden_tenant": "eval.mem.ana"
+    },
+    {
+      "id": "mr-039",
+      "kind": "cross_tenant",
+      "user_key": "eval.mem.ana",
+      "query": "o que eu comprei no PED-3310?",
+      "expected": [],
+      "forbidden_tenant": "eval.mem.bruno"
+    },
+    {
+      "id": "mr-040",
+      "kind": "cross_tenant",
+      "user_key": "eval.mem.ana",
+      "query": "a que horas eu abro a minha padaria?",
+      "expected": [],
+      "forbidden_tenant": "eval.mem.bruno"
+    },
+    {
+      "id": "mr-041",
+      "kind": "empty_tenant",
+      "user_key": "eval.mem.vazio",
+      "query": "qual é o meu nome?",
+      "expected": [],
+      "expect_empty": true
+    }
+  ]
+}

@@ -151,7 +151,7 @@ class TaintTests(unittest.TestCase):
         return answer, session, fake_run, events, metrics
 
     def test_write_after_web_search_is_denied_before_reaching_mcp(self):
-        write = {"database": "POC", "collection": "support_orders",
+        write = {"database": agent.DB_MAIN, "collection": "support_orders",
                  "filter": {"order_id": "PED-1002"},
                  "update": {"$set": {"status": "reembolso_solicitado"}}}
         answer, session, fake_run, events, metrics = self._run_loop([
@@ -251,7 +251,7 @@ class DateDiffTests(unittest.TestCase):
         self.assertTrue(agent.date_diff("25/12", FIXED_NOW).startswith("Data inválida"))
 
     def test_local_tool_does_not_taint_the_turn(self):
-        write = {"database": "POC", "collection": "support_orders",
+        write = {"database": agent.DB_MAIN, "collection": "support_orders",
                  "filter": {"order_id": "PED-1002"},
                  "update": {"$set": {"status": "reembolso_solicitado"}}}
         loop = TaintTests()

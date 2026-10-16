@@ -32,3 +32,6 @@ playwright-report/
 # venvs auxiliares (dependências pesadas fora do venv do PoV)
 .venv-eval/
 .venv-memory/
+
+# Queryable Encryption (A5): chave mestra LOCAL só para a demo, nunca versionada
+backend/secrets/

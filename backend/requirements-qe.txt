@@ -1,0 +1,2 @@
+# Só para scripts/qe_sensitive_profile.py (Queryable Encryption, A5). Fora do runtime da demo.
+pymongo[encryption]==4.19.0

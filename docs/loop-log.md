@@ -145,3 +145,25 @@ nenhuma escrita nos bancos da demo.
 | Preflight (POC_test, app rodando) | "worker vivo (running, eventos 3, lag 0.94s)" |
 | Regressão: `_shared` 272 · multiagente 523/50 skip · unittest 219 · frontend 8 · caos 32/32 · visual 3/3 · e2e 1/1 | verde |
 | Snapshot das 42 coleções da demo antes/depois | **sem diferença** |
+
+## A5 — Queryable Encryption (standalone)
+
+### Iteração 1 — 2026-10-16
+
+| Etapa | Resultado |
+|---|---|
+| Dependência | `pymongo[encryption]==4.19.0` → pymongocrypt 1.21.2 / libmongocrypt 1.21.0 (`backend/requirements-qe.txt`); sem `crypt_shared` |
+| `scripts/qe_sensitive_profile.py` LIVE (POC_test) | ciphertext nos 3 campos, igualdade CPF/telefone, tenant errado vazio, faixa correta, resumo sem CPF |
+| `tests/test_qe_profile.py` offline | 5 OK (3 LIVE pulados) |
+| `LIVE=1 tests/test_qe_profile.py` | 7 OK, 1 erro |
+
+- **Falhou:** `test_demo_report` — `Mismatched keyId for field 'cpf'` (code 6726301).
+- **Causa raiz:** o cliente com auto-decryption guarda o `encryptedFields` em cache; o segundo
+  `reset()` recriou a collection com DEKs novas e o cliente velho inseriu com as keyIds antigas.
+- **Correção:** `reset()` recria o cliente da aplicação.
+
+### Iteração 2 — 2026-10-16
+
+| Etapa | Resultado |
+|---|---|
+| `LIVE=1 tests/test_qe_profile.py` (inclui operador `$ne`, vazio, invisível, 5.000 chars, faixa saturada, 15 consultas simultâneas) | 8 OK |

@@ -1095,6 +1095,258 @@ async def scenario_memory_concurrent_tenants() -> Verdict:
                    f"vazio_ok={empty_ok} em {elapsed:.2f}s", elapsed)
 
 
+# --- invalidação do cache por change stream (2026-10), LIVE em POC_test/ai_brain_test -----
+
+_CS_AREA = "vendas"
+
+
+async def _cs_setup(name):
+    """Prepara o banco de teste: perfil `vendas` conhecido, 2 entradas de runtime + 1 FAQ."""
+    if os.getenv("LIVE", "").strip() not in {"1", "true", "yes"}:
+        return None, Verdict(name, "", False, "LIVE=1 ausente — cenário não roda contra Atlas",
+                             0.0, skipped=True)
+    import isolation
+
+    isolation.use_test_databases(what=f"chaos_suite {name}")
+    if (refusal := require_test_db(name)):
+        return None, Verdict(name, "isolamento de banco", False, refusal, 0.0)
+    import cache_invalidation as ci
+    from db import ai_brain, poc
+
+    profiles = ai_brain()["area_profiles"]
+    base = await profiles.find_one({"area": _CS_AREA})
+    if base is None:
+        return None, Verdict(name, "", False, "perfil vendas ausente no banco de teste", 0.0)
+    original = base.get("persona")
+    cache = poc()["semantic_cache"]
+    await cache.delete_many({"_chaos": name})
+    await cache.insert_many([
+        {"_chaos": name, "area": _CS_AREA, "scope": "support", "question": "q1", "answer": "a"},
+        {"_chaos": name, "area": _CS_AREA, "scope": "quick-chat", "question": "q2", "answer": "a"},
+        {"_chaos": name, "area": "logistica", "scope": "support", "question": "q3",
+         "answer": "outra área não pode sair"},
+        {"_chaos": name, "area": _CS_AREA, "scope": "faq", "source_area": _CS_AREA,
+         "source_hash": ci.persona_hash(base), "question": "faq", "answer": "faq"},
+    ])
+    await ai_brain()[ci.TOKENS_COLLECTION].delete_one({"_id": ci.WORKER_ID})
+    return {"ci": ci, "profiles": profiles, "cache": cache, "original": original,
+            "base": base}, None
+
+
+async def _cs_left(ctx, name):
+    return sorted(f"{d['area']}:{d['scope']}" for d in
+                  await ctx["cache"].find({"_chaos": name}).to_list(20))
+
+
+async def _cs_teardown(ctx, name):
+    await ctx["profiles"].update_one({"area": _CS_AREA}, {"$set": {"persona": ctx["original"]}})
+    await ctx["cache"].delete_many({"_chaos": name})
+
+
+async def _cs_wait(ctx, name, want, timeout=20.0):
+    deadline = perf_counter() + timeout
+    while perf_counter() < deadline:
+        if await _cs_left(ctx, name) == want:
+            return True
+        await asyncio.sleep(0.3)
+    return False
+
+
+_CS_AFTER = ["logistica:support"]   # runtime de vendas e a FAQ (hash mudou) saem
+
+
+async def _cs_running(worker, timeout=20.0):
+    """Espera o watch existir: evento antes dele não é visto (no app, a partida reconcilia)."""
+    deadline = perf_counter() + timeout
+    while perf_counter() < deadline and worker.stats.state != "running":
+        await asyncio.sleep(0.1)
+    await asyncio.sleep(0.5)
+
+
+async def _cs_bump(ctx, tag):
+    await ctx["profiles"].update_one({"area": _CS_AREA},
+                                     {"$set": {"persona": f"{ctx['original']} [{tag}]"}})
+
+
+async def scenario_cs_invalidation_live() -> Verdict:
+    name = "cs_invalidation_live"
+    assertion = ("update da persona de uma área → runtime dessa área e FAQ com hash velho "
+                 "saem do cache; outra área fica; lag medido pelo worker")
+    ctx, skip = await _cs_setup(name)
+    if skip:
+        return skip
+    ci = ctx["ci"]
+    start = perf_counter()
+    worker = ci.build_worker()
+    try:
+        worker.start()
+        await _cs_running(worker)
+        await _cs_bump(ctx, "v1")
+        ok = await _cs_wait(ctx, name, _CS_AFTER)
+        lag = worker.stats.last_lag_seconds
+        return Verdict(name, assertion, ok, f"restou={await _cs_left(ctx, name)} "
+                       f"lag={lag}s eventos={worker.stats.events}", perf_counter() - start)
+    finally:
+        await worker.stop()
+        await _cs_teardown(ctx, name)
+
+
+async def scenario_cs_connection_drop() -> Verdict:
+    name = "cs_connection_drop"
+    assertion = ("cursor do change stream derrubado no meio → o worker reabre com o resume "
+                 "token salvo e processa o evento seguinte")
+    ctx, skip = await _cs_setup(name)
+    if skip:
+        return skip
+    ci = ctx["ci"]
+    start = perf_counter()
+    worker = ci.build_worker()
+    try:
+        worker.start()
+        await _cs_running(worker)
+        await _cs_bump(ctx, "antes")           # gera token salvo
+        await _cs_wait(ctx, name, _CS_AFTER)
+        await ctx["cache"].insert_one({"_chaos": name, "area": _CS_AREA, "scope": "support",
+                                       "question": "q4", "answer": "a"})
+        await worker._close_stream()           # conexão cai no meio da iteração
+        await asyncio.sleep(1.0)
+        await _cs_bump(ctx, "depois")
+        ok = await _cs_wait(ctx, name, _CS_AFTER)
+        return Verdict(name, assertion, ok and worker.stats.history_lost == 0,
+                       f"restou={await _cs_left(ctx, name)} eventos={worker.stats.events} "
+                       f"reconexões={worker.stats.reconnects}", perf_counter() - start)
+    finally:
+        await worker.stop()
+        await _cs_teardown(ctx, name)
+
+
+async def scenario_cs_invalid_resume_token() -> Verdict:
+    name = "cs_invalid_resume_token"
+    assertion = ("resume token inválido no banco → o servidor recusa, o worker faz a "
+                 "invalidação conservadora (reconcile), apaga o token e reabre sem ele")
+    ctx, skip = await _cs_setup(name)
+    if skip:
+        return skip
+    ci = ctx["ci"]
+    from db import ai_brain
+
+    await ai_brain()[ci.TOKENS_COLLECTION].replace_one(
+        {"_id": ci.WORKER_ID}, {"token": {"_data": "82DEADBEEF"}}, upsert=True)
+    start = perf_counter()
+    worker = ci.build_worker()
+    try:
+        worker.start()
+        # reconcile: runtime de TODAS as áreas sai; a FAQ com hash certo fica
+        ok_reconcile = await _cs_wait(ctx, name, ["vendas:faq"], timeout=20)
+        await asyncio.sleep(1.0)
+        await _cs_bump(ctx, "pos-token")
+        ok_after = await _cs_wait(ctx, name, [])
+        return Verdict(name, assertion, ok_reconcile and ok_after and worker.stats.history_lost >= 1,
+                       f"history_lost={worker.stats.history_lost} restou={await _cs_left(ctx, name)} "
+                       f"erro={worker.stats.last_error}", perf_counter() - start)
+    finally:
+        await worker.stop()
+        await _cs_teardown(ctx, name)
+
+
+async def scenario_cs_history_lost() -> Verdict:
+    name = "cs_history_lost"
+    assertion = ("ChangeStreamHistoryLost (286) ao reabrir → reconcile (runtime de todas as "
+                 "áreas sai, FAQ com hash certo fica) e o stream volta a funcionar")
+    ctx, skip = await _cs_setup(name)
+    if skip:
+        return skip
+    ci = ctx["ci"]
+    from pymongo.errors import OperationFailure
+
+    fired = {"n": 0}
+
+    async def flaky_open(token):
+        if fired["n"] == 0:
+            fired["n"] += 1
+            raise OperationFailure("ChangeStreamHistoryLost (simulado)", code=286)
+        return await ci._open_stream(token)
+    start = perf_counter()
+    worker = ci.build_worker(open_stream=flaky_open)
+    try:
+        worker.start()
+        ok_reconcile = await _cs_wait(ctx, name, ["vendas:faq"])
+        await asyncio.sleep(1.0)
+        await _cs_bump(ctx, "pos-lost")
+        ok_after = await _cs_wait(ctx, name, [])
+        return Verdict(name, assertion, ok_reconcile and ok_after,
+                       f"history_lost={worker.stats.history_lost} restou={await _cs_left(ctx, name)}",
+                       perf_counter() - start)
+    finally:
+        await worker.stop()
+        await _cs_teardown(ctx, name)
+
+
+async def scenario_cs_sigkill_resume() -> Verdict:
+    name = "cs_sigkill_resume"
+    assertion = ("worker morto com SIGKILL depois de salvar o token; persona muda com ele "
+                 "fora; o worker novo RETOMA do token e processa o evento perdido")
+    ctx, skip = await _cs_setup(name)
+    if skip:
+        return skip
+    ci = ctx["ci"]
+    from db import ai_brain
+
+    code = ("import asyncio, sys; sys.path.insert(0, '.'); import cache_invalidation as ci\n"
+            "async def m():\n"
+            "    w = ci.build_worker(); w.start()\n"
+            "    while w.stats.state != 'running': await asyncio.sleep(0.1)\n"
+            "    await asyncio.sleep(0.5)\n"
+            "    print('UP', flush=True)\n"
+            "    while (await w._store.load()) is None: await asyncio.sleep(0.2)\n"
+            "    print('SAVED', flush=True); await asyncio.sleep(3600)\n"
+            "asyncio.run(m())\n")
+    start = perf_counter()
+    child = await asyncio.create_subprocess_exec(
+        sys.executable, "-c", code, cwd=str(Path(__file__).resolve().parents[1]),
+        env=dict(os.environ), stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT)
+    worker = None
+    try:
+        seen: list[str] = []
+
+        async def until(marker):
+            while True:
+                line = await child.stdout.readline()
+                if not line:
+                    raise RuntimeError(f"filho terminou antes de {marker}: {seen[-3:]}")
+                seen.append(line.decode(errors="replace").strip()[:160])
+                if line.strip() == marker.encode():
+                    return
+
+        await asyncio.wait_for(until("UP"), 30)
+        await _cs_bump(ctx, "filho")
+        await asyncio.wait_for(until("SAVED"), 30)
+        child.kill()
+        await child.wait()
+        token_doc = await ai_brain()[ci.TOKENS_COLLECTION].find_one({"_id": ci.WORKER_ID})
+        await ctx["cache"].insert_one({"_chaos": name, "area": _CS_AREA, "scope": "support",
+                                       "question": "q5", "answer": "a"})
+        await _cs_bump(ctx, "com-o-worker-morto")             # evento perdido
+        worker = ci.build_worker()
+        worker.start()
+        ok = await _cs_wait(ctx, name, _CS_AFTER)
+        return Verdict(name, assertion, ok and bool((token_doc or {}).get("token"))
+                       and worker.stats.history_lost == 0,
+                       f"token_salvo={bool((token_doc or {}).get('token'))} "
+                       f"restou={await _cs_left(ctx, name)} eventos_novo={worker.stats.events}",
+                       perf_counter() - start)
+    except Exception as exc:  # noqa: BLE001
+        tail = locals().get("seen", [])[-4:]
+        return Verdict(name, assertion, False, f"{type(exc).__name__}: {exc} | filho: {tail}",
+                       perf_counter() - start)
+    finally:
+        if child.returncode is None:
+            child.kill()
+        if worker:
+            await worker.stop()
+        await _cs_teardown(ctx, name)
+
+
 SCENARIOS = {
     "tool_timeout": scenario_tool_timeout,
     "mcp_session_down": scenario_mcp_session_down,
@@ -1123,6 +1375,11 @@ SCENARIOS = {
     "memory_max_time": scenario_memory_max_time,
     "memory_all_search_down": scenario_memory_all_search_down,
     "memory_concurrent_tenants": scenario_memory_concurrent_tenants,
+    "cs_invalidation_live": scenario_cs_invalidation_live,
+    "cs_connection_drop": scenario_cs_connection_drop,
+    "cs_invalid_resume_token": scenario_cs_invalid_resume_token,
+    "cs_history_lost": scenario_cs_history_lost,
+    "cs_sigkill_resume": scenario_cs_sigkill_resume,
 }
 
 

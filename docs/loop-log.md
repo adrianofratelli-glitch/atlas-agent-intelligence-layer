@@ -113,3 +113,35 @@ nenhuma escrita nos bancos da demo.
   pioram superseded (0,90 → 0,70–0,75). Recall@5 já é 1,0 sem rerank.
 - **Decisão:** desligado no seed (ADR-009); `$rerank` não se aplica ao cache semântico (limiar,
   não ranking). Config de teste restaurada para a do seed ao fim da varredura.
+
+## A4 — Change Streams invalidando o cache semântico
+
+### Iteração 1 — 2026-10-16
+
+| Etapa | Resultado |
+|---|---|
+| `tests/test_cache_invalidation.py` (relevância, área, hash da FAQ, evento torto, fuzz, worker, singleton) | 15 OK |
+| `_shared` worker (history lost, token recusado, token do cursor antes de reabrir) | 59 testes do módulo |
+| Caos LIVE `cs_*` (1ª rodada) | 3/5 |
+
+- **Falhou:** `cs_invalid_resume_token` — o servidor devolve **code 15 (Overflow)** para token
+  malformado, não 260; o worker tratava como transitório e ficava em backoff eterno.
+  **Correção (`_shared`):** recusa não transitória ao abrir COM token = token inútil →
+  `on_history_lost` + reabre sem token.
+- **Falhou:** `cs_sigkill_resume` — (a) teste: o filho anunciava "SAVED" antes de gravar o token
+  e misturava logs no stdout; (b) causa real: o `timeoutMS=15000` (CSOT) do cliente do app vale
+  para o `watch`; stream ocioso caía com `ExecutionTimeout` a cada ~18 s e um evento no meio da
+  reabertura se perdia. **Correção:** cliente dedicado sem CSOT + `max_await_time_ms=5000`; o
+  worker salva o `postBatchResumeToken` antes de reabrir; partida sem token faz reconcile.
+- **Falhou (timing de teste):** `cs_invalidation_live` com cliente novo (abre em > 1,5 s);
+  teste passa a esperar `state == running`.
+
+### Iteração 2 — 2026-10-16
+
+| Etapa | Resultado |
+|---|---|
+| Caos LIVE `cs_*` | 5/5 (lag 0,9–0,95 s) |
+| App real em POC_test: lifespan, `/api/health`, update de persona | invalidação em 1,02 s; área vizinha preservada; auditoria em `cache_invalidations`; resume do token na partida; shutdown limpo |
+| Preflight (POC_test, app rodando) | "worker vivo (running, eventos 3, lag 0.94s)" |
+| Regressão: `_shared` 272 · multiagente 523/50 skip · unittest 219 · frontend 8 · caos 32/32 · visual 3/3 · e2e 1/1 | verde |
+| Snapshot das 42 coleções da demo antes/depois | **sem diferença** |

@@ -313,6 +313,101 @@ def check_observability() -> list[Check]:
     return checks
 
 
+async def check_atlas_capabilities() -> list[Check]:
+    """Capabilities 2026-10: config do retrieval, analyzer do BM25, $rerank, FAQs com fonte
+    e o worker de change stream. Tudo é fail-open no app, então aqui vira AVISO, não falha:
+    a demo roda, só sem o ganho medido."""
+    from db import DB_BRAIN, DB_MAIN, MAX_TIME_MS, ai_brain, get_client, poc
+
+    import cache_invalidation
+    import memory
+
+    checks = []
+    cfg = Check("memory_retrieval_config")
+    try:
+        doc = await ai_brain()[memory.RETRIEVAL_CONFIG_COLLECTION].find_one(
+            {"_id": memory.RETRIEVAL_CONFIG_ID}, max_time_ms=MAX_TIME_MS)
+        fusion, rerank, warns = memory.parse_retrieval_config(doc)
+        if doc is None:
+            cfg.warn("ausente: retrieval com defaults (rode seed.py)")
+        elif warns:
+            cfg.warn(f"config com valor inválido, usando default: {warns[0]}")
+        else:
+            cfg.ok(f"{fusion['per_branch_limit']} por perna, pesos {fusion['weights']}, "
+                   f"rerank {'ligado' if rerank['enabled'] else 'desligado'}")
+    except Exception as exc:  # noqa: BLE001
+        cfg.warn(f"ilegível: {type(exc).__name__}")
+    checks.append(cfg)
+
+    analyzer = Check("BM25 da memória em português")
+    try:
+        cursor = await poc()[memory.MEMORY_COLLECTION].list_search_indexes()
+        rows = await cursor.to_list(None)
+        idx = next((r for r in rows if r.get("name") == memory.BM25_INDEX), None)
+        field = ((idx or {}).get("latestDefinition") or {}).get("mappings", {}) \
+            .get("fields", {}).get("fact", {})
+        if field.get("analyzer") == "lucene.portuguese":
+            analyzer.ok("lucene.portuguese (stopwords + stemming)")
+        else:
+            analyzer.warn("analyzer padrão: recall@5 0,972 em vez de 1,0 no eval — "
+                          "reset controlado (seed.py) atualiza o índice")
+    except Exception as exc:  # noqa: BLE001
+        analyzer.warn(f"{type(exc).__name__}: {str(exc)[:80]}")
+    checks.append(analyzer)
+
+    if memory._ar is not None:
+        _, rerank, _ = memory.parse_retrieval_config(
+            await ai_brain()[memory.RETRIEVAL_CONFIG_COLLECTION].find_one(
+                {"_id": memory.RETRIEVAL_CONFIG_ID}))
+        rr = Check("$rerank (Public Preview nos rerank-3*)")
+        if not rerank["enabled"]:
+            rr.ok("desligado na config (decisão medida, ADR-009)")
+        else:
+            try:
+                stages = memory._ar.build_rerank_stages(
+                    "teste", "fact", memory._ar.RerankConfig(enabled=True, model=rerank["model"],
+                                                             pool=1, top_n=1))
+                cur = await poc()[memory.MEMORY_COLLECTION].aggregate(
+                    [{"$match": {"active": True}}, {"$sort": {"_id": 1}}, {"$limit": 1}] + stages,
+                    maxTimeMS=MAX_TIME_MS)
+                await cur.to_list(1)
+                rr.ok(f"{rerank['model']} aceito pelo servidor")
+            except Exception as exc:  # noqa: BLE001
+                rr.warn(f"rejeitado ({type(exc).__name__}): o turno segue sem rerank")
+        checks.append(rr)
+
+    faq = Check("FAQs com fonte da política")
+    try:
+        missing = await poc()["semantic_cache"].count_documents(
+            {"scope": "faq", "source_hash": {"$exists": False}}, maxTimeMS=MAX_TIME_MS)
+        total = await poc()["semantic_cache"].count_documents({"scope": "faq"},
+                                                              maxTimeMS=MAX_TIME_MS)
+        if missing:
+            faq.warn(f"{missing}/{total} sem source_hash: a invalidação só as derruba no "
+                     "reconcile (rode seed.py)")
+        else:
+            faq.ok(f"{total} FAQs com source_area/source_hash")
+    except Exception as exc:  # noqa: BLE001
+        faq.warn(f"{type(exc).__name__}")
+    checks.append(faq)
+
+    worker = Check("invalidação do cache (change stream)")
+    try:
+        doc = await ai_brain()[cache_invalidation.TOKENS_COLLECTION].find_one(
+            {"_id": cache_invalidation.WORKER_ID}, max_time_ms=MAX_TIME_MS)
+        if cache_invalidation.heartbeat_fresh(doc):
+            st = (doc.get("stats") or {}).get("worker") or {}
+            worker.ok(f"worker vivo ({st.get('state', '?')}, eventos {st.get('events', 0)}, "
+                      f"lag {st.get('last_lag_seconds')}s)")
+        else:
+            worker.warn("sem heartbeat recente: app parado ou worker caído — o cache segue "
+                        "só com TTL até ele voltar")
+    except Exception as exc:  # noqa: BLE001
+        worker.warn(f"{type(exc).__name__}")
+    checks.append(worker)
+    return checks
+
+
 async def main(args) -> int:
     from dotenv import load_dotenv
 
@@ -337,6 +432,11 @@ async def main(args) -> int:
 
     print("\nConfiguração viva (ai_brain)")
     for check in await check_live_config():
+        checks.append(check)
+        print(check.line())
+
+    print("\nCapabilities do Atlas (2026-10)")
+    for check in await check_atlas_capabilities():
         checks.append(check)
         print(check.line())
 

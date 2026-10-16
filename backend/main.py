@@ -36,6 +36,7 @@ from pydantic import BaseModel, Field
 
 import auth
 import cache
+import cache_invalidation
 import policy_guardrails as guardrails
 import guidance
 import memory
@@ -186,10 +187,17 @@ async def lifespan(app: FastAPI):
     ]
     janitor_task = asyncio.create_task(_rate_windows_janitor(stop))
     warm_task = asyncio.create_task(_warm_atlas())
+    # Change stream area_profiles → invalida o cache semântico (ADR-010). Fail-open: sem
+    # pov-shared ou com o watch recusado, o cache segue só com o TTL e a demo não muda.
+    try:
+        await cache_invalidation.start()
+    except Exception:  # noqa: BLE001
+        logger.warning("invalidação do cache por change stream não subiu", exc_info=True)
     try:
         yield
     finally:
         stop.set()
+        await cache_invalidation.stop()
         await asyncio.gather(*pool_tasks, janitor_task, warm_task)
 
 
@@ -431,6 +439,7 @@ async def health():
         "counts": counts,
         "primary_model": cfg["primary"]["model"],
         "fallback_model": cfg["fallback"]["model"],
+        "cache_invalidation": cache_invalidation.stats(),
     }
 
 

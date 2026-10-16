@@ -157,6 +157,20 @@ CACHE_CONFIG = {
     "updated_at": NOW,
 }
 
+def _faq_source_area(item: dict) -> str:
+    """FAQ global cita as políticas da área de suporte padrão; as demais, a própria área."""
+    area = item.get("area", "global")
+    return "default" if area == "global" else area
+
+
+def _faq_source_hash(item: dict) -> str | None:
+    from cache_invalidation import persona_hash
+
+    source = _faq_source_area(item)
+    profile = next((p for p in AREA_PROFILES if p.get("area") == source), None)
+    return persona_hash(profile)
+
+
 # Retrieval da memória longa ($rankFusion), config viva: lida a cada turno por
 # memory.load_relevant. Valores MEDIDOS com scripts/memory_recall_eval.py (2026-10-16,
 # eval/memory_recall.json): 8 candidatos por perna e pesos iguais; ver docs/adr/ADR-008.
@@ -1078,6 +1092,10 @@ def main(argv: list[str] | None = None):
                     # "global" vale para todas as áreas; um valor específico
                     # restringe o HIT àquela área (campo de filtro do índice)
                     "area": item.get("area", "global"),
+                    # Fonte da política citada na FAQ (ADR-010): a invalidação por change
+                    # stream só derruba a FAQ se a persona dessa área mudar de verdade.
+                    "source_area": _faq_source_area(item),
+                    "source_hash": _faq_source_hash(item),
                 },
                 "$setOnInsert": {
                     "hits": 0,
@@ -1211,6 +1229,8 @@ def main(argv: list[str] | None = None):
     #  - guardrail_events / agent_traces: telemetria/auditoria da PoV expira em
     #    30 dias — as collections de observabilidade não crescem para sempre.
     poc["semantic_cache"].create_index("expires_at", expireAfterSeconds=0)
+    # Auditoria da invalidação por change stream (ADR-010): 30 dias, como os outros logs.
+    poc["cache_invalidations"].create_index("at", expireAfterSeconds=30 * 24 * 3600)
     # Fallback exato do cache filtra por (question_norm, area) — sem este índice
     # vira COLLSCAN quando o índice vetorial está indisponível.
     poc["semantic_cache"].create_index([("question_norm", 1), ("area", 1)])

@@ -1259,3 +1259,20 @@ footer.app-footer p {
   overflow-wrap: anywhere;
 }
 .chat-msg strong, .thought-text strong, .reason-text strong { font-weight: 700; }
+
+/* "Por que este fato foi lembrado" (scoreDetails do $rankFusion) */
+.memory-why { margin-top: 8px; border-top: 1px solid var(--border-subtle, #2a424d); padding-top: 7px; }
+.memory-why summary { cursor: pointer; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  color: var(--text-muted, #9ea2a1); font-size: 12px; }
+.why-strategy { color: var(--accent); font-size: 11px; border: 1px solid currentColor; border-radius: 999px; padding: 0 8px; }
+.why-strategy.fallback { color: #ffc010; }
+.why-rerank, .why-fallbacks { font-size: 11px; margin: 6px 0 0; }
+.why-preview { margin-left: 6px; color: #ffc010; border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; }
+.why-facts { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; }
+.why-fact-text { font-size: 12px; }
+.why-legs { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 2px; font-size: 11px; }
+.why-leg { display: inline-flex; gap: 6px; align-items: center; }
+.why-leg-name { color: var(--text-muted, #9ea2a1); min-width: 58px; }
+.why-bar { width: 64px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; display: inline-block; }
+.why-bar > span { display: block; height: 100%; background: var(--accent); transform-origin: left center;
+  transition: transform 300ms ease-out; }

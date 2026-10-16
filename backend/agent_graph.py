@@ -322,6 +322,42 @@ async def n_cache_finish(state: TurnState, config) -> dict:
     return {"output": output, "trace": trace, "metrics": metrics, "cache_res": cache_res}
 
 
+_MEMORY_TOOL_LABEL = {
+    "rank_fusion": "$rankFusion ($vectorSearch + $search) · agent_memory",
+    "rank_fusion+rerank": "$rankFusion + $rerank · agent_memory",
+    "rerank_unavailable": "$rankFusion ($rerank indisponível) · agent_memory",
+    "app_rrf": "$vectorSearch + $search, RRF na aplicação · agent_memory",
+    "vector": "$vectorSearch · agent_memory",
+    "lexical": "$search (BM25) · agent_memory",
+}
+_MEMORY_MODE_TEXT = {
+    "rank_fusion": "fusão híbrida no servidor ($rankFusion, semântico + lexical com fuzzy)",
+    "rank_fusion+rerank": "fusão no servidor + reordenação por $rerank (Voyage, Public Preview)",
+    "rerank_unavailable": "fusão no servidor; $rerank rejeitado, ordem da fusão mantida",
+    "app_rrf": "$rankFusion indisponível: duas buscas em paralelo e RRF na aplicação",
+    "vector": "só a perna semântica (índice lexical indisponível)",
+    "lexical": "só a perna lexical (índice vetorial indisponível)",
+}
+
+
+def _memory_explain(ltm: dict, retrieval: dict) -> dict:
+    """"Por que este fato foi lembrado": estratégia, config e rank/peso/contribuição por perna.
+
+    `explain` None = detalhe indisponível (formato do scoreDetails mudou, ou caminho sem
+    fusão). Vai para o trace (agent_traces) e para o inspector; nunca derruba o turno.
+    """
+    facts = []
+    for f in ltm.get("facts", [])[:8]:
+        facts.append({"id": f.get("_id"), "fact": str(f.get("fact", ""))[:120],
+                      "score": f.get("score"), "fusion_score": f.get("fusion_score"),
+                      "rerank_score": f.get("rerank_score"), "explain": f.get("explain")})
+    return {"strategy": retrieval.get("strategy", ltm.get("mode")),
+            "fusion": retrieval.get("fusion"), "rerank": retrieval.get("rerank"),
+            "fallbacks": retrieval.get("fallbacks", []),
+            "config_warnings": retrieval.get("config_warnings", []),
+            "search_ms": retrieval.get("search_ms"), "facts": facts}
+
+
 async def n_run_pipeline(state: TurnState, config) -> dict:
     """Caminho completo: memória longa + histórico + tools + orçamento em
     paralelo, monta o prompt, roda o loop de ferramentas (com extração de
@@ -358,15 +394,12 @@ async def n_run_pipeline(state: TurnState, config) -> dict:
                    "o modelo não consegue ignorá-lo.")
     if ltm.get("facts"):
         mode = ltm.get("mode")
-        semantic = mode in ("vector", "hybrid")
-        tool = ("$vectorSearch + $search RRF (agent_memory)" if mode == "hybrid"
-                else "$vectorSearch (agent_memory)" if mode == "vector"
-                else "find (agent_memory)")
+        retrieval = ltm.get("retrieval") or {}
+        semantic = mode not in (None, "all", "recent")
+        tool = _MEMORY_TOOL_LABEL.get(mode, "find (agent_memory)")
         detail = (
             f"Memória longo prazo: {len(ltm['facts'])} fato(s) relevantes à pergunta, "
-            f"de {ltm.get('total_active', 0)} ativos — "
-            + ("retrieval híbrido (semântico + lexical, fusão RRF)."
-               if mode == "hybrid" else "retrieval semântico.")
+            f"de {ltm.get('total_active', 0)} ativos — {_MEMORY_MODE_TEXT.get(mode, mode)}."
             if semantic else
             f"Memória longo prazo: {len(ltm['facts'])} fato(s) sobre o cliente."
         )
@@ -374,7 +407,8 @@ async def n_run_pipeline(state: TurnState, config) -> dict:
               args={"database": DB_MAIN, "collection": "agent_memory",
                     "query": user_msg if semantic else None,
                     "filter": {"user_key": user_key, "active": True}},
-              result=detail, reads=metrics["reads"], writes=metrics["writes"])
+              result=detail, reads=metrics["reads"], writes=metrics["writes"],
+              memory_retrieval=_memory_explain(ltm, retrieval))
 
     mem_task = None
     if memory.should_extract(user_msg):

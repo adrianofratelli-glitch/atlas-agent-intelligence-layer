@@ -72,3 +72,19 @@ nenhuma escrita nos bancos da demo.
   analyzer padrão até um reset controlado (`ALLOW_DEMO_DB_WRITE=1 seed.py`) ou
   `updateSearchIndex`. Com o analyzer antigo e 8 por perna a medição em `POC_test` deu recall@5
   0,972 (varredura `b8w05`), ainda acima do 0,917 do default de 20.
+
+## A2 — explicabilidade (`scoreDetails`)
+
+### Iteração 1 — 2026-10-16
+
+| Etapa | Resultado |
+|---|---|
+| `tests/test_memory_explain_trace.py` (bloco do trace, formato inesperado, todos os modos rotulados) | 3 OK |
+| `frontend/tests/memory-explain.test.mjs` (parse defensivo no inspector) | 3 OK (frontend 8/8) |
+| LIVE: turno real `eval.mem.ana` no app em `POC_test` | `memory_retrieval` no evento e em `POC_test.agent_traces`; fato certo em 1º, rank 1 nas duas pernas, contribuição 1/61 cada |
+| Playwright visual | 3/3 (o inspector só aparece depois de um turno; snapshots inalterados) |
+
+- **O que falhou:** nada nesta fase.
+- **Observação de UX (para A7):** a coluna MongoDB fica vazia por 15,8 s durante o turno; os
+  eventos do SSE só viram uma linha de status e o trace inteiro aparece no fim. Página com
+  1.376 px numa tela de 900.

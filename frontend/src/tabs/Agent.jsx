@@ -7,6 +7,7 @@ import TextInput from '@leafygreen-ui/text-input';
 import { api } from '../api.js';
 import ReplacementChain from '../components/ReplacementChain.jsx';
 import QueryDetails from '../components/QueryDetails.jsx';
+import MemoryWhy from '../components/MemoryWhy.jsx';
 import ExecutionSummary from '../components/ExecutionSummary.jsx';
 
 // Prova visual do pitch "MongoDB reduz custo de LLM", direto na PoV — sem precisar
@@ -635,6 +636,7 @@ export default function Agent({ state, setState }) {
                   explain={e.explain}
                   label={e.args?.provider ? 'Ver chamada / consulta executada' : 'Ver chamada MCP / query executada'}
                 />
+                {e.memory_retrieval && <MemoryWhy block={e.memory_retrieval} />}
               </div>
             ))}
           </div>

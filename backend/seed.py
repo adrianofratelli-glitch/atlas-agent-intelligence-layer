@@ -157,6 +157,22 @@ CACHE_CONFIG = {
     "updated_at": NOW,
 }
 
+# Retrieval da memória longa ($rankFusion), config viva: lida a cada turno por
+# memory.load_relevant. Valores MEDIDOS com scripts/memory_recall_eval.py (2026-10-16,
+# eval/memory_recall.json): 8 candidatos por perna e pesos iguais; ver docs/adr/ADR-008.
+MEMORY_RETRIEVAL_CONFIG = {
+    "_id": "default",
+    "weights": {"vector": 1.0, "bm25": 1.0},
+    "per_branch_limit": 8,
+    "num_candidates": 100,
+    "fuzzy_max_edits": 1,
+    "score_details": True,
+    "rerank": {"enabled": False, "model": "rerank-2.5-lite", "pool": 20, "top_n": 5},
+    "measured": {"script": "backend/scripts/memory_recall_eval.py", "at": "2026-10-16",
+                 "recall_at_5": 1.0, "mrr": 0.918},
+    "updated_at": NOW,
+}
+
 
 # Support domain for the agent demo (Tab 3). The agent reads these orders through
 # the MongoDB MCP Server, searches produtos_vector for replacement options, and
@@ -792,11 +808,15 @@ VECTOR_INDEXES = [
 ]
 
 # BM25 (Atlas Search) sobre os fatos: metade lexical do retrieval híbrido da
-# memória longa (vector + BM25 fundidos com RRF em memory.load_relevant).
+# memória longa (vector + BM25 fundidos no $rankFusion de memory.load_relevant).
+# `lucene.portuguese` (2026-10): com o analyzer padrão as stopwords ("que", "eu", "não",
+# "meu") casavam em quase todo fato; com 20 candidatos por perna esse ruído entrava na
+# fusão e derrubava paráfrases (recall@5 1,0 → 0,917 no eval/memory_recall.json).
 BM25_INDEXES = [
     {"db": _DB_MAIN, "collection": "agent_memory", "name": "agent_memory_bm25",
      "definition": {"mappings": {"dynamic": False, "fields": {
-         "fact": {"type": "string"},
+         "fact": {"type": "string", "analyzer": "lucene.portuguese",
+                  "searchAnalyzer": "lucene.portuguese"},
          "user_key": {"type": "token"},
          "active": {"type": "boolean"},
      }}}},
@@ -896,7 +916,15 @@ def create_vector_indexes(client) -> list[str]:
         except Exception as exc:  # noqa: BLE001
             msg = str(exc).lower()
             if "already exists" in msg or "already defined" in msg or "duplicate" in msg:
-                print(f"  ✓ índice BM25 '{spec['name']}' já existe")
+                # Atualiza a definição (antes só dizia "já existe", e um índice de seed antigo
+                # nunca ganhava o analyzer novo).
+                try:
+                    coll.update_search_index(spec["name"], spec["definition"])
+                    print(f"  ✓ índice BM25 '{spec['name']}' atualizado em "
+                          f"{spec['db']}.{spec['collection']}")
+                except Exception as upd:  # noqa: BLE001
+                    print(f"  ⚠ índice BM25 '{spec['name']}' existe mas não pude atualizar: "
+                          f"{str(upd)[:120]}")
             else:
                 failed.append(f"{spec['db']}.{spec['collection']}:{spec['name']}")
                 print(f"  ✗ não criei BM25 '{spec['name']}': {str(exc)[:120]}")
@@ -967,6 +995,13 @@ def main(argv: list[str] | None = None):
     db["cache_config"].update_one(
         {"_id": CACHE_CONFIG["_id"]},
         {"$setOnInsert": CACHE_CONFIG},
+        upsert=True,
+    )
+
+    # Config viva do retrieval: $setOnInsert preserva um ajuste feito ao vivo.
+    db["memory_retrieval_config"].update_one(
+        {"_id": MEMORY_RETRIEVAL_CONFIG["_id"]},
+        {"$setOnInsert": MEMORY_RETRIEVAL_CONFIG},
         upsert=True,
     )
 
@@ -1160,7 +1195,7 @@ def main(argv: list[str] | None = None):
 
     print("Seed concluído em ai_brain:")
     for coll in ("prompt_templates", "model_config", "cache_config",
-                 "guardrail_policies", "area_profiles"):
+                 "memory_retrieval_config", "guardrail_policies", "area_profiles"):
         print(f"  {coll}: {db[coll].count_documents({})} documentos")
 
     print("\nSeed concluído em POC:")

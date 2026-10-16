@@ -25,6 +25,7 @@ durable first-person information. It pulls stable facts, compares them against
 relevant known facts, and flags which old fact each new one replaces (if any).
 """
 
+import asyncio
 import json
 import logging
 import math
@@ -34,7 +35,8 @@ from datetime import datetime, timezone
 from anthropic import AsyncAnthropic
 from bson import ObjectId
 
-from db import MAX_TIME_MS, aggregate_list, get_client, poc, safe_query, tenant_vector_stage
+from db import (MAX_TIME_MS, aggregate_list, ai_brain, get_client, poc, safe_query,
+                tenant_vector_stage)
 
 logger = logging.getLogger(__name__)
 
@@ -297,50 +299,151 @@ async def load_longterm(user_key: str, include_history: bool = False) -> dict:
     return out
 
 
-async def _vector_candidates(user_key: str, query: str) -> list[dict]:
-    pipeline = [
-        # O isolamento é ESTA cláusula `filter` (imposta por tenant_vector_stage,
-        # que recusa user_key vazio); o índice só a torna um pré-filtro eficiente.
-        tenant_vector_stage(index=MEMORY_INDEX, path="fact", query=query,
-                            tenant_filter={"user_key": user_key, "active": True},
-                            num_candidates=100, limit=RELEVANT_LIMIT),
-        {"$project": {"fact": 1, "category": 1, "created_at": 1, "active": 1,
-                      "superseded_by": 1, "score": {"$meta": "vectorSearchScore"}}},
-    ]
-    return await aggregate_list(poc()[MEMORY_COLLECTION], pipeline,
-                                length=RELEVANT_LIMIT, maxTimeMS=MAX_TIME_MS)
+# --- retrieval híbrido -------------------------------------------------------------
+#
+# Config viva em ai_brain.memory_retrieval_config ("agents are data"): pesos das pernas,
+# candidatos por perna, fuzzy e $rerank. Lida a CADA chamada (em paralelo com as outras
+# leituras da 1ª onda), então um update_one vale no turno seguinte, sem restart. Documento
+# ausente ou malformado → defaults seguros (FusionConfig/RerankConfig.from_doc nunca levantam).
+RETRIEVAL_CONFIG_COLLECTION = "memory_retrieval_config"
+RETRIEVAL_CONFIG_ID = "default"
+RETRIEVAL_LEGS = ("vector", "bm25")
+DEFAULT_PER_BRANCH = 8                 # candidatos por perna > RELEVANT_LIMIT: a fusão precisa
+                                       # de profundidade para reordenar. Medido (eval/
+                                       # memory_recall.json, lucene.portuguese): 6-8 dão recall@5
+                                       # 1,0 e MRR 0,918; 10 → 0,972; 20 → 0,917 (ruído lexical)
+MODES = ("all", "rank_fusion", "rank_fusion+rerank", "rerank_unavailable", "app_rrf",
+         "vector", "lexical", "recent")
+_FACT_FIELDS = {"fact": 1, "category": 1, "created_at": 1, "active": 1, "superseded_by": 1}
+MAX_QUERY_CHARS = 2_000                # a pergunta vira texto de busca, nunca operador; acima
+                                       # disso só custa embedding e não muda o ranking
+
+try:  # pov-shared >= 0.3.0; sem ele o app sobe e a fusão roda no RRF local abaixo
+    import atlas_retrieval as _ar
+except ImportError:  # pragma: no cover — coberto por test_memory_retrieval (sem pov-shared)
+    _ar = None
+
+# Estágio rejeitado pelo servidor ($rankFusion/$rerank) fica fora por 5 min: sem isso cada
+# turno pagaria o round-trip de uma recusa. Timeout/rede não marcam (classify_stage_error).
+_capabilities = _ar.CapabilityCache(ttl_seconds=300) if _ar else None
 
 
-async def _bm25_candidates(user_key: str, query: str) -> list[dict]:
-    """Metade lexical do retrieval híbrido: $search (BM25) sobre os fatos,
-    com o MESMO isolamento por filtro (user_key + active) dentro do índice."""
-    pipeline = [
-        {
-            "$search": {
-                "index": BM25_INDEX,
-                "compound": {
-                    "must": [{"text": {"query": query, "path": "fact"}}],
-                    "filter": [
-                        {"equals": {"path": "user_key", "value": user_key}},
-                        {"equals": {"path": "active", "value": True}},
-                    ],
-                },
-            }
-        },
-        {"$limit": RELEVANT_LIMIT},
-        {"$project": {"fact": 1, "category": 1, "created_at": 1, "active": 1,
-                      "superseded_by": 1, "score": {"$meta": "searchScore"}}},
+def _defaults() -> tuple[dict, dict]:
+    return ({"weights": {leg: 1.0 for leg in RETRIEVAL_LEGS},
+             "per_branch_limit": DEFAULT_PER_BRANCH, "num_candidates": 100,
+             "fuzzy_max_edits": 1, "score_details": True},
+            {"enabled": False, "model": "rerank-2.5-lite", "pool": 20, "top_n": RELEVANT_LIMIT})
+
+
+def parse_retrieval_config(doc) -> tuple[dict, dict, list[str]]:
+    """Documento de config → (fusão, rerank, avisos). Nunca levanta."""
+    fusion, rerank = _defaults()
+    if _ar is None:
+        return fusion, rerank, ["pov-shared ausente: config padrão"]
+    src = doc if isinstance(doc, dict) else None
+    cfg, warns = _ar.FusionConfig.from_doc(src, legs=RETRIEVAL_LEGS,
+                                           min_branch=RELEVANT_LIMIT, max_branch=100,
+                                           default_branch=DEFAULT_PER_BRANCH)
+    rr, rwarns = _ar.RerankConfig.from_doc(src.get("rerank") if src else None)
+    fusion = {"weights": cfg.weights, "per_branch_limit": cfg.per_branch_limit,
+              "num_candidates": cfg.num_candidates, "fuzzy_max_edits": cfg.fuzzy_max_edits,
+              "score_details": cfg.score_details}
+    rerank = {"enabled": rr.enabled, "model": rr.model, "pool": max(rr.pool, RELEVANT_LIMIT),
+              "top_n": min(rr.top_n, RELEVANT_LIMIT)}
+    return fusion, rerank, warns + [f"rerank: {w}" for w in rwarns]
+
+
+async def _retrieval_config_doc():
+    try:
+        return await ai_brain()[RETRIEVAL_CONFIG_COLLECTION].find_one(
+            {"_id": RETRIEVAL_CONFIG_ID}, max_time_ms=MAX_TIME_MS)
+    except Exception:  # noqa: BLE001 — config ilegível → defaults, o turno segue
+        logger.warning("memory_retrieval_config ilegível; usando defaults", exc_info=True)
+        return None
+
+
+def _vector_leg(user_key: str, query: str, fusion: dict) -> dict:
+    # O isolamento é ESTA cláusula `filter` (imposta por tenant_vector_stage, que recusa
+    # user_key vazio); o índice só a torna um pré-filtro eficiente.
+    return tenant_vector_stage(index=MEMORY_INDEX, path="fact", query=query,
+                               tenant_filter={"user_key": user_key, "active": True},
+                               num_candidates=fusion["num_candidates"],
+                               limit=fusion["per_branch_limit"])
+
+
+def _bm25_leg(user_key: str, query: str, fusion: dict) -> list[dict]:
+    """Perna lexical: termo exato + termo com fuzzy (typo), MESMO isolamento no compound.filter.
+
+    Exato e fuzzy são `should` separados: o fuzzy (Damerau, maxEdits 1) faz "PED-2041" casar
+    "PED-2014"; com as duas cláusulas, o documento com o termo exato pontua nas duas e fica na
+    frente. `fuzzy_max_edits=0` desliga o fuzzy pela config.
+    """
+    should = [{"text": {"query": query, "path": "fact", "score": {"boost": {"value": 2}}}}]
+    if fusion["fuzzy_max_edits"]:
+        should.append({"text": {"query": query, "path": "fact",
+                                "fuzzy": {"maxEdits": fusion["fuzzy_max_edits"]}}})
+    if not user_key:
+        raise db_tenant_error("$search em agent_memory sem user_key")
+    return [
+        {"$search": {"index": BM25_INDEX, "compound": {
+            "should": should, "minimumShouldMatch": 1,
+            "filter": [{"equals": {"path": "user_key", "value": user_key}},
+                       {"equals": {"path": "active", "value": True}}]}}},
+        {"$limit": fusion["per_branch_limit"]},
     ]
+
+
+def db_tenant_error(message: str):
+    from db import TenantFilterMissing
+    return TenantFilterMissing(message)
+
+
+async def _vector_candidates(user_key: str, query: str, fusion: dict | None = None) -> list[dict]:
+    fusion = fusion or _defaults()[0]
+    pipeline = [_vector_leg(user_key, query, fusion),
+                {"$project": {**_FACT_FIELDS, "score": {"$meta": "vectorSearchScore"}}}]
     return await aggregate_list(poc()[MEMORY_COLLECTION], pipeline,
-                                length=RELEVANT_LIMIT, maxTimeMS=MAX_TIME_MS)
+                                length=fusion["per_branch_limit"], maxTimeMS=MAX_TIME_MS)
+
+
+async def _bm25_candidates(user_key: str, query: str, fusion: dict | None = None) -> list[dict]:
+    fusion = fusion or _defaults()[0]
+    pipeline = _bm25_leg(user_key, query, fusion) + [
+        {"$project": {**_FACT_FIELDS, "score": {"$meta": "searchScore"}}}]
+    return await aggregate_list(poc()[MEMORY_COLLECTION], pipeline,
+                                length=fusion["per_branch_limit"], maxTimeMS=MAX_TIME_MS)
+
+
+def rank_fusion_pipeline(user_key: str, query: str, fusion: dict, rerank: dict | None = None,
+                         *, limit: int = RELEVANT_LIMIT) -> list[dict]:
+    """UM `$rankFusion` com as duas pernas filtradas por tenant no servidor (+ `$rerank`).
+
+    O `$rerank` vem DEPOIS da fusão (dentro dela o servidor rejeita, code 12108704) e
+    substitui `$meta: "score"`: por isso o score e o scoreDetails da fusão são copiados
+    para campos antes dele.
+    """
+    pool = rerank["pool"] if rerank else limit
+    stages = [
+        _ar.build_rank_fusion({"vector": [_vector_leg(user_key, query, fusion)],
+                               "bm25": _bm25_leg(user_key, query, fusion)},
+                              weights=fusion["weights"], score_details=fusion["score_details"]),
+        {"$limit": pool},
+        _ar.fusion_meta_stage(score_details=fusion["score_details"]),
+    ]
+    if rerank:
+        stages += _ar.build_rerank_stages(
+            query, "fact", _ar.RerankConfig(enabled=True, model=rerank["model"],
+                                            pool=pool, top_n=limit))
+    stages.append({"$project": {**_FACT_FIELDS, "fusion_score": 1, "score_details": 1,
+                                "rerank_score": 1}})
+    return stages
 
 
 def _rrf_fuse(rankings: list[list[dict]], k: int = RRF_K) -> list[dict]:
-    """Reciprocal Rank Fusion: combina rankings sem calibrar escalas de score.
+    """Reciprocal Rank Fusion local (fallback SEM pov-shared): score(doc) = Σ 1/(k + posição).
 
-    score(doc) = Σ 1/(k + posição). Um fato bem ranqueado nas DUAS buscas
-    (semântica e lexical) sobe; um fato forte numa só ainda entra. k=60 é a
-    constante clássica do paper — amortece a diferença entre topo e cauda.
+    Com pov-shared o fallback usa `atlas_retrieval.app_rrf` (pesos + mesmo formato de
+    explain do servidor); este fica para o app subir sem o pacote.
     """
     fused: dict = {}
     for ranking in rankings:
@@ -352,64 +455,183 @@ def _rrf_fuse(rankings: list[list[dict]], k: int = RRF_K) -> list[dict]:
     out = []
     for e in ordered:
         doc = e["doc"]
-        doc["score"] = round(e["rrf"], 4)
+        doc["fusion_score"] = round(e["rrf"], 6)
         out.append(doc)
     return out
 
 
-async def load_relevant(user_key: str, query: str) -> dict:
-    """The facts RELEVANT to this turn — retrieval HÍBRIDO pré-filtrado.
+def _explain(doc: dict) -> dict | None:
+    """scoreDetails → {legs: [{name, rank, weight, value, contribution}]} ou None.
 
-    Duas buscas em paralelo sobre os mesmos fatos, ambas com isolamento
-    (user_key + active) como campos de filtro DENTRO do índice:
-      · $vectorSearch (semântica — "prefere ser contatado à noite" acha
-        "não ligar durante o dia")
-      · $search BM25 (lexical — códigos, nomes próprios, termos exatos que
-        embedding dilui)
-    Os rankings são fundidos com Reciprocal Rank Fusion. Fallbacks (mode):
-      "all"    → few facts: skip the search, inject everything
-      "hybrid" → RRF(vector, bm25) + the freshest facts merged in
-      "vector" → BM25 indisponível (índice construindo): só semântica
-      "recent" → index unavailable: newest facts (never breaks the demo)
+    Formato não garantido pela doc: parse defensivo, formato inesperado = "detalhe
+    indisponível" (None), nunca erro.
     """
-    total = await safe_query(
-        poc()[MEMORY_COLLECTION].count_documents(
-            {"user_key": user_key, "active": True}, maxTimeMS=MAX_TIME_MS
-        )
+    raw = doc.get("score_details")
+    if _ar is None or raw is None:
+        return None
+    parsed = _ar.parse_score_details(raw)
+    return parsed.as_dict() if parsed else None
+
+
+def _fact_with_score(doc: dict) -> dict:
+    out = _fact_out(doc)
+    score = doc.get("rerank_score", doc.get("fusion_score", doc.get("score")))
+    if isinstance(score, (int, float)) and not isinstance(score, bool) and math.isfinite(score):
+        out["score"] = round(float(score), 6)
+    if isinstance(doc.get("fusion_score"), (int, float)):
+        out["fusion_score"] = round(float(doc["fusion_score"]), 6)
+    if isinstance(doc.get("rerank_score"), (int, float)):
+        out["rerank_score"] = round(float(doc["rerank_score"]), 6)
+    explain = _explain(doc)
+    out["explain"] = explain
+    return out
+
+
+async def _fused_server(user_key: str, query: str, fusion: dict, rerank: dict | None):
+    rows = await aggregate_list(poc()[MEMORY_COLLECTION],
+                                rank_fusion_pipeline(user_key, query, fusion, rerank),
+                                length=RELEVANT_LIMIT, maxTimeMS=MAX_TIME_MS)
+    return rows[:RELEVANT_LIMIT]
+
+
+async def _fused_app(user_key: str, query: str, fusion: dict) -> tuple[list[dict], str, str | None]:
+    """RRF na aplicação, com as duas pernas REALMENTE em paralelo (asyncio.gather)."""
+    vec, lex = await asyncio.gather(_vector_candidates(user_key, query, fusion),
+                                    _bm25_candidates(user_key, query, fusion),
+                                    return_exceptions=True)
+    vec_ok, lex_ok = not isinstance(vec, BaseException), not isinstance(lex, BaseException)
+    if vec_ok and lex_ok:
+        if _ar is not None:
+            docs = _ar.app_rrf({"vector": vec, "bm25": lex}, weights=fusion["weights"],
+                               limit=RELEVANT_LIMIT)
+        else:
+            docs = _rrf_fuse([vec, lex])[:RELEVANT_LIMIT]
+        return docs, "app_rrf", None
+    if vec_ok:
+        return vec[:RELEVANT_LIMIT], "vector", f"bm25: {type(lex).__name__}"
+    if lex_ok:
+        return lex[:RELEVANT_LIMIT], "lexical", f"vector: {type(vec).__name__}"
+    raise vec
+
+
+def _cap_usable(name: str) -> bool:
+    return _capabilities is None or _capabilities.usable(name)
+
+
+def _cap_failed(name: str, exc: BaseException) -> str:
+    if _capabilities is None:
+        return "unsupported"
+    return _capabilities.record_failure(name, exc)
+
+
+async def load_relevant(user_key: str, query: str, *, strategy: str | None = None) -> dict:
+    """The facts RELEVANT to this turn — retrieval HÍBRIDO pré-filtrado, UM round-trip de busca.
+
+    1ª onda, em paralelo: config viva, contagem e os fatos mais recentes (servem ao atalho
+    "all", ao merge contra o lag do autoEmbed e ao fallback "recent").
+    2ª onda: um `$rankFusion` com `$vectorSearch` (tenant_vector_stage) + `$search` BM25
+    (compound.filter user_key + active), ambos filtrados NO SERVIDOR, e `$rerank` opcional.
+
+    Fallbacks (`mode`, sempre um valor de MODES):
+      "all"                → poucos fatos: pula a busca, injeta tudo
+      "rank_fusion"        → $rankFusion no servidor (+ os recentes fundidos)
+      "rank_fusion+rerank" → idem + $rerank (Public Preview nos modelos rerank-3*)
+      "rerank_unavailable" → $rerank rejeitado: fusão sem rerank (no-op)
+      "app_rrf"            → $rankFusion rejeitado: duas pernas em paralelo + RRF na aplicação
+      "vector" / "lexical" → uma perna fora (índice BUILDING/ausente): só a outra
+      "recent"             → busca indisponível: fatos mais novos (nunca quebra a demo)
+    `strategy` força um caminho (eval/medição): "app_rrf", "rank_fusion", "rank_fusion+rerank".
+    """
+    # user_key vem do servidor (profiles), mas um dict aqui ({"$ne": None}) viraria um filtro
+    # que casa TODOS os tenants nas três leituras: recusa antes de montar qualquer query.
+    if not isinstance(user_key, str) or not user_key.strip():
+        raise db_tenant_error("load_relevant sem user_key válido")
+    query = query if isinstance(query, str) else ""
+    query = query[:MAX_QUERY_CHARS] if query.strip() else "cliente"
+    config_doc, total, recent = await asyncio.gather(
+        _retrieval_config_doc(),
+        safe_query(poc()[MEMORY_COLLECTION].count_documents(
+            {"user_key": user_key, "active": True}, maxTimeMS=MAX_TIME_MS)),
+        _active_docs(user_key, limit=RELEVANT_LIMIT + 1),
     )
     base = {"user_key": user_key, "total_active": total,
             "collection": f"POC.{MEMORY_COLLECTION}"}
     if total == 0:
-        return {**base, "facts": [], "mode": "all"}
+        return {**base, "facts": [], "mode": "all", "retrieval": {"strategy": "all"}}
     if total <= RELEVANT_LIMIT:
-        docs = await _active_docs(user_key)
-        return _with_quarantine(base, [_fact_out(d) for d in docs], "all")
+        return _with_quarantine(base, [_fact_out(d) for d in recent[:RELEVANT_LIMIT]], "all",
+                                {"strategy": "all"})
 
+    fusion, rerank, warnings = parse_retrieval_config(config_doc)
+    want_rerank = rerank["enabled"] if strategy is None else strategy == "rank_fusion+rerank"
+    retrieval = {"fusion": {k: fusion[k] for k in ("weights", "per_branch_limit",
+                                                    "fuzzy_max_edits")},
+                 "rerank": {"enabled": want_rerank, "model": rerank["model"],
+                            "pool": rerank["pool"], "status": "off",
+                            "preview": rerank["model"].startswith("rerank-3")},
+                 "config_warnings": warnings[:5], "fallbacks": []}
+    started = asyncio.get_running_loop().time()
+    docs, mode = None, None
     try:
-        vector_docs = await _vector_candidates(user_key, query)
-        try:
-            bm25_docs = await _bm25_candidates(user_key, query)
-            docs = _rrf_fuse([vector_docs, bm25_docs])[:RELEVANT_LIMIT]
-            mode = "hybrid"
-        except Exception:  # noqa: BLE001 — BM25 ausente/construindo → só vetor
-            docs = vector_docs
-            mode = "vector"
+        server_ok = _ar is not None and strategy != "app_rrf" and _cap_usable("rank_fusion")
+        if server_ok:
+            if want_rerank and _cap_usable("rerank"):
+                try:
+                    docs = await _fused_server(user_key, query, fusion, rerank)
+                    mode = "rank_fusion+rerank"
+                    retrieval["rerank"]["status"] = "ran"
+                    _capabilities.record_success("rerank")
+                except Exception as exc:  # noqa: BLE001 — $rerank rejeitado → no-op
+                    kind = _cap_failed("rerank", exc)
+                    retrieval["fallbacks"].append(f"rerank {kind}: {type(exc).__name__}")
+                    retrieval["rerank"]["status"] = "unavailable"
+            elif want_rerank:
+                retrieval["rerank"]["status"] = "unavailable"
+                retrieval["fallbacks"].append("rerank: indisponível (cache de capability)")
+            if docs is None:
+                try:
+                    docs = await _fused_server(user_key, query, fusion, None)
+                    mode = "rerank_unavailable" if want_rerank else "rank_fusion"
+                    _capabilities.record_success("rank_fusion")
+                except Exception as exc:  # noqa: BLE001 — $rankFusion rejeitado → RRF local
+                    kind = _cap_failed("rank_fusion", exc)
+                    retrieval["fallbacks"].append(f"rank_fusion {kind}: {type(exc).__name__}")
+                    docs = None
+        elif _ar is not None and strategy != "app_rrf":
+            retrieval["fallbacks"].append("rank_fusion: indisponível (cache de capability)")
+        if docs is None:
+            docs, mode, why = await _fused_app(user_key, query, fusion)
+            if why:
+                retrieval["fallbacks"].append(why)
         # merge the freshest facts (autoEmbed indexing lag) and de-dupe by _id
-        recent = await _active_docs(user_key, limit=RECENT_MERGE)
-        seen = {d["_id"] for d in docs}
-        docs += [d for d in recent if d["_id"] not in seen]
-    except Exception:  # noqa: BLE001 — index missing/building → graceful fallback
-        docs = await _active_docs(user_key, limit=RELEVANT_LIMIT)
-        mode = "recent"
-    return _with_quarantine(base, [_fact_out(d) for d in docs], mode)
+        seen = {str(d["_id"]) for d in docs}
+        docs = list(docs) + [d for d in recent[:RECENT_MERGE] if str(d["_id"]) not in seen]
+    except Exception as exc:  # noqa: BLE001 — index missing/building → graceful fallback
+        retrieval["fallbacks"].append(f"busca: {type(exc).__name__}")
+        docs, mode = recent[:RELEVANT_LIMIT], "recent"
+    retrieval["strategy"] = mode
+    retrieval["search_ms"] = round((asyncio.get_running_loop().time() - started) * 1000, 1)
+    unique, ids = [], set()
+    for d in docs:
+        if str(d["_id"]) not in ids:
+            ids.add(str(d["_id"]))
+            unique.append(d)
+    return _with_quarantine(base, [_fact_with_score(d) for d in unique], mode, retrieval)
 
 
-def _with_quarantine(base: dict, facts: list[dict], mode: str) -> dict:
+async def load_relevant_with(user_key: str, query: str, *, strategy: str) -> dict:
+    """Eval: força um caminho de retrieval (não usado pelo turno)."""
+    return await load_relevant(user_key, query, strategy=strategy)
+
+
+def _with_quarantine(base: dict, facts: list[dict], mode: str,
+                     retrieval: dict | None = None) -> dict:
     kept, dropped = quarantine(facts)
     if dropped:
         logger.warning("%s fato(s) em formato de instrução fora do prompt (user_key=%s)",
                        dropped, base.get("user_key"))
-    return {**base, "facts": kept, "mode": mode, "quarantined": dropped}
+    return {**base, "facts": kept, "mode": mode, "quarantined": dropped,
+            "retrieval": retrieval or {"strategy": mode}}
 
 
 def _neutralize_delimiters(text: str) -> str:
@@ -441,7 +663,7 @@ def format_for_prompt(ltm: dict, max_chars: int = MAX_PROMPT_MEMORY_CHARS) -> st
     picked = (
         f"{len(selected)} fato(s) relevantes para esta pergunta, de "
         f"{ltm.get('total_active', len(facts))} ativos"
-        if ltm.get("mode") in ("vector", "hybrid")
+        if ltm.get("mode") not in (None, "all", "recent")
         else f"{len(facts)} fato(s)"
     )
     return (

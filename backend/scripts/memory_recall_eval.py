@@ -261,11 +261,22 @@ async def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--strategy", default="current")
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--config-json", help="grava ai_brain_test.memory_retrieval_config antes "
+                        "de medir (só banco de teste); '{}' remove o documento")
     args = parser.parse_args(argv)
     use_test_databases(what="eval de recall da memória")
     listener = RoundTrips()
     _install_listener(listener)
     dataset = json.loads(DATASET.read_text(encoding="utf-8"))
+    if args.config_json is not None:
+        import db
+        import memory
+        coll = db.ai_brain()[memory.RETRIEVAL_CONFIG_COLLECTION]
+        cfg = json.loads(args.config_json)
+        if cfg:
+            await coll.replace_one({"_id": memory.RETRIEVAL_CONFIG_ID}, cfg, upsert=True)
+        else:
+            await coll.delete_one({"_id": memory.RETRIEVAL_CONFIG_ID})
     fixtures = await seed_fixtures(dataset)
     waited = await wait_indexed(dataset)
     # aquece o pool (o primeiro comando paga handshake TLS e distorceria o p95)
@@ -273,6 +284,7 @@ async def main(argv: list[str] | None = None) -> int:
     report = await run_cases(dataset, fixtures, args.strategy, args.repeat, listener)
     import db
     report["summary"].update({"label": args.label, "database": db.DB_MAIN,
+                              "config": json.loads(args.config_json) if args.config_json else None,
                               "index_wait_seconds": waited,
                               "at": datetime.now(timezone.utc).isoformat(timespec="seconds")})
     out = args.out or REPORTS / (f"memory-recall-{args.label}-"

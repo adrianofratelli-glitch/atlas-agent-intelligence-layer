@@ -9,8 +9,10 @@ Variáveis (lidas a CADA chamada de propósito: a bateria troca o cenário entre
 os casos, no mesmo processo):
 
     CHAOS=1                liga
-    CHAOS_SCENARIO         timeout | hang | status | not_primary | search_down | none
-    CHAOS_TARGET           substring casada contra "<ponto>:<nome>" ("" = todos)
+    CHAOS_SCENARIO         timeout | hang | status | not_primary | search_down |
+                           stage_rejected | index_building | max_time | none
+    CHAOS_TARGET           substring casada contra "<ponto>:<nome>" ("" = todos;
+                           "a|b" = qualquer alternativa)
     CHAOS_PHASE            fase exigida ("" = qualquer): before_first_token,
                            after_provider_response, between_tools
     CHAOS_STATUS           código HTTP simulado do provedor (default 429)
@@ -42,7 +44,8 @@ def _armed(point: str, name: str, phase: str) -> bool:
     if not enabled():
         return False
     target = os.getenv("CHAOS_TARGET", "").strip()
-    if target and target not in f"{point}:{name}":
+    # "a|b": qualquer uma das alternativas (índice BUILDING derruba a fusão E a perna)
+    if target and not any(t and t in f"{point}:{name}" for t in target.split("|")):
         return False
     wanted_phase = os.getenv("CHAOS_PHASE", "").strip()
     if wanted_phase and wanted_phase != phase:
@@ -85,6 +88,26 @@ def search_unavailable_error():
         "$vectorSearch index not found (mongot indisponível)", code=8)
 
 
+def stage_rejected_error():
+    """Estágio recusado pelo servidor ($rankFusion/$rerank desabilitado ou versão antiga),
+    com o código real de "Unrecognized pipeline stage name" (40324)."""
+    from pymongo.errors import OperationFailure
+    return OperationFailure("Unrecognized pipeline stage name (rejeição simulada)", code=40324)
+
+
+def index_building_error():
+    """Índice Search/Vector em BUILDING ou ausente durante o turno."""
+    from pymongo.errors import OperationFailure
+    return OperationFailure("PlanExecutor error :: caused by :: search index is not READY "
+                            "(BUILDING, simulado)", code=8)
+
+
+def max_time_error():
+    """maxTimeMS estourado no servidor (código 50, a classe real do driver)."""
+    from pymongo.errors import ExecutionTimeout
+    return ExecutionTimeout("operation exceeded time limit (simulado)", code=50)
+
+
 class ChaosProviderError(Exception):
     """Erro de provedor simulado; carrega `status_code` como o SDK real carrega."""
 
@@ -107,6 +130,12 @@ async def hook(point: str, *, name: str = "", phase: str = "") -> None:
         raise not_primary_error()
     if scenario == "search_down":
         raise search_unavailable_error()
+    if scenario == "stage_rejected":
+        raise stage_rejected_error()
+    if scenario == "index_building":
+        raise index_building_error()
+    if scenario == "max_time":
+        raise max_time_error()
 
 
 def mangle(point: str, name: str, value):

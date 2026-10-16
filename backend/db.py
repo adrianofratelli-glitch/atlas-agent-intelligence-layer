@@ -136,7 +136,16 @@ def tenant_vector_stage(*, index: str, path: str, query: str, tenant_filter: dic
 
 
 async def aggregate_list(coll, pipeline, *, length: int, **kwargs) -> list[dict]:
-    """PyMongo Async: aggregate() é corrotina → await duas vezes (cursor, depois lista)."""
+    """PyMongo Async: aggregate() é corrotina → await duas vezes (cursor, depois lista).
+
+    Com `CHAOS=1`, ponto de injeção `aggregate:<estágios>` (ex. `aggregate:$rankFusion+$rerank`):
+    é por aqui que a bateria simula estágio rejeitado, índice BUILDING e maxTimeMS.
+    """
+    if _chaos_enabled():
+        import chaos
+
+        ops = "+".join(next(iter(st)) for st in pipeline if isinstance(st, dict) and st)
+        await chaos.hook("aggregate", name=ops)
     cursor = await coll.aggregate(pipeline, **kwargs)
     return await cursor.to_list(length=length)
 

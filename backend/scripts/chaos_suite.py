@@ -37,9 +37,36 @@ from pathlib import Path
 from time import perf_counter
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+# Com LIVE=1, o processo aponta para os bancos de TESTE ANTES de qualquer `import db`.
+# Bug real (2026-10-16): os cenários offline importavam `db` primeiro, `db.DB_MAIN` ficava
+# preso em "POC" (lido no import) e o `use_test_databases` de cada cenário LIVE só mudava
+# o ambiente — live_degraded_turn/crash_* gravaram sessões e checkpoints na DEMO.
+if os.getenv("LIVE", "").strip().lower() in {"1", "true", "yes"}:
+    import isolation  # noqa: E402
+
+    isolation.use_test_databases(what="chaos_suite LIVE")
 
 import chaos  # noqa: E402
 import resilience  # noqa: E402
+
+
+def require_test_db(name: str) -> str | None:
+    """Trava por cenário LIVE: devolve o motivo da recusa se algum módulo já carregado
+    apontar para o banco da demo (nunca escreve; o cenário vira FAIL explícito)."""
+    import db
+    import isolation
+
+    loaded = {"db": (db.DB_MAIN, db.DB_BRAIN)}
+    agent = sys.modules.get("agent")
+    if agent is not None:
+        loaded["agent"] = (getattr(agent, "DB_MAIN", None), getattr(agent, "DB_BRAIN", None))
+    demo = {isolation.DEMO_MAIN_DB, isolation.DEMO_BRAIN_DB}
+    bad = {mod: dbs for mod, dbs in loaded.items() if demo & set(dbs)}
+    if bad and not isolation.allow_demo_write():
+        return f"{name}: RECUSADO, módulo(s) apontando para a demo: {bad}"
+    return None
 
 TOOLS = [{"name": "find", "description": "find", "input_schema": {"type": "object"}}]
 
@@ -514,6 +541,8 @@ async def scenario_live_degraded_turn() -> Verdict:
     import isolation
 
     isolation.use_test_databases(what="chaos_suite live_degraded_turn")
+    if (refusal := require_test_db("live_degraded_turn")):
+        return Verdict("live_degraded_turn", "isolamento de banco", False, refusal, 0.0)
     import agent  # noqa: E402 — depois do override de banco
 
     start = perf_counter()
@@ -561,6 +590,8 @@ async def scenario_checkpoint_native_persistence() -> Verdict:
     import isolation
 
     isolation.use_test_databases(what="chaos_suite checkpoint_native_persistence")
+    if (refusal := require_test_db("checkpoint_native_persistence")):
+        return Verdict("checkpoint_native_persistence", "isolamento de banco", False, refusal, 0.0)
     import agent
     import agent_graph
     from db import poc
@@ -879,6 +910,8 @@ async def scenario_crash_mid_tool() -> Verdict:
     # Segunda metade da assertion: a MESMA conversa continua utilizável depois do
     # crash — o turno seguinte responde e é gravado, sem herdar lixo.
     isolation.use_test_databases(what="chaos_suite crash_mid_tool (retomada)")
+    if (refusal := require_test_db("crash_mid_tool")):
+        return Verdict("crash_mid_tool", "isolamento de banco", False, refusal, 0.0)
     import agent
 
     original = agent.anthropic_client
@@ -903,6 +936,164 @@ async def scenario_crash_mid_tool() -> Verdict:
                    f"turnos apos o kill={len(turns)} meio-escritos={len(half_written)} "
                    f"checkpoint_pendente={checkpointed} retomada_ok={resumed_ok}", elapsed)
 
+# --- retrieval da memória longa (2026-10): $rankFusion/$rerank/índices sob falha, LIVE -----
+
+_MEM_USER, _MEM_QUERY = "eval.mem.ana", "qual era mesmo o fone do PED-2041?"
+_MEM_EXPECTED = "Comprei o fone Quantum 910 no pedido PED-2041."
+
+
+async def _memory_live(name, assertion, *, target, scenario, expect_modes, rerank=False,
+                       then_without_chaos=None):
+    """Roda memory.load_relevant de verdade (POC_test, fatos do eval) com uma falha armada.
+
+    Resiliente = (a) nenhuma exceção sobe; (b) `mode` é o fallback esperado; (c) o fato
+    certo continua no resultado (exceto no "recent", que só promete os mais novos);
+    (d) todo _id devolvido é do MESMO tenant e active=true, conferido no banco.
+    """
+    if os.getenv("LIVE", "").strip() not in {"1", "true", "yes"}:
+        return Verdict(name, assertion, False, "LIVE=1 ausente — cenário não roda contra Atlas",
+                       0.0, skipped=True)
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import isolation
+
+    isolation.use_test_databases(what=f"chaos_suite {name}")
+    if (refusal := require_test_db(name)):
+        return Verdict(name, "isolamento de banco", False, refusal, 0.0)
+    import db
+    import memory
+    from bson import ObjectId
+
+    if memory._capabilities is not None:
+        memory._capabilities.reset()
+    original = memory._retrieval_config_doc
+    if rerank:
+        async def _cfg():
+            return {"rerank": {"enabled": True, "model": "rerank-2.5-lite", "pool": 20}}
+        memory._retrieval_config_doc = _cfg
+    start = perf_counter()
+    try:
+        with env(CHAOS="1", CHAOS_SCENARIO=scenario, CHAOS_TARGET=target):
+            out = await memory.load_relevant(_MEM_USER, _MEM_QUERY)
+        follow = None
+        if then_without_chaos:
+            follow = await memory.load_relevant(_MEM_USER, _MEM_QUERY)
+    except Exception as exc:  # noqa: BLE001 — a assertion é justamente não chegar aqui
+        memory._retrieval_config_doc = original
+        return Verdict(name, assertion, False, f"exceção subiu: {type(exc).__name__}: {exc}",
+                       perf_counter() - start)
+    finally:
+        memory._retrieval_config_doc = original
+    elapsed = perf_counter() - start
+    ids = [ObjectId(f["_id"]) for f in out["facts"]]
+    owners = await db.aggregate_list(db.poc()["agent_memory"], [
+        {"$match": {"_id": {"$in": ids}}}, {"$project": {"user_key": 1, "active": 1}}],
+        length=len(ids) or 1)
+    leak = [o for o in owners if o.get("user_key") != _MEM_USER or o.get("active") is not True]
+    found = any(f["fact"] == _MEM_EXPECTED for f in out["facts"])
+    ok = out["mode"] in expect_modes and not leak and len(owners) == len(ids) and \
+        (found or out["mode"] == "recent")
+    detail = (f"mode={out['mode']} fato_certo={found} vazamento={len(leak)} "
+              f"fallbacks={out.get('retrieval', {}).get('fallbacks')}")
+    if then_without_chaos:
+        ok = ok and follow["mode"] == then_without_chaos
+        detail += f" | sem caos depois: mode={follow['mode']}"
+    return Verdict(name, assertion, ok, detail, elapsed)
+
+
+async def scenario_memory_fusion_rejected() -> Verdict:
+    return await _memory_live(
+        "memory_fusion_rejected",
+        "$rankFusion rejeitado pelo servidor → RRF na aplicação com as duas pernas em paralelo, "
+        "fato certo mantido, rejeição lembrada (o turno seguinte não paga o round-trip)",
+        target="aggregate:$rankFusion", scenario="stage_rejected", expect_modes={"app_rrf"},
+        then_without_chaos="app_rrf")
+
+
+async def scenario_memory_rerank_rejected() -> Verdict:
+    return await _memory_live(
+        "memory_rerank_rejected",
+        "$rerank rejeitado → no-op: fusão sem rerank, mode=rerank_unavailable, fato certo mantido",
+        target="$rerank", scenario="stage_rejected", expect_modes={"rerank_unavailable"},
+        rerank=True)
+
+
+async def scenario_memory_bm25_building() -> Verdict:
+    return await _memory_live(
+        "memory_bm25_building",
+        "índice BM25 em BUILDING (fusão e perna $search falham) → só a perna vetorial",
+        target="aggregate:$rankFusion|aggregate:$search", scenario="index_building",
+        expect_modes={"vector"})
+
+
+async def scenario_memory_vector_absent() -> Verdict:
+    return await _memory_live(
+        "memory_vector_absent",
+        "índice vetorial ausente → só a perna lexical (BM25 com o identificador exato)",
+        target="aggregate:$rankFusion|aggregate:$vectorSearch", scenario="index_building",
+        expect_modes={"lexical"})
+
+
+async def scenario_memory_max_time() -> Verdict:
+    return await _memory_live(
+        "memory_max_time",
+        "maxTimeMS estourado na fusão → RRF na aplicação neste turno, SEM marcar o "
+        "$rankFusion como indisponível (o turno seguinte volta ao servidor)",
+        target="aggregate:$rankFusion", scenario="max_time", expect_modes={"app_rrf"},
+        then_without_chaos="rank_fusion")
+
+
+async def scenario_memory_all_search_down() -> Verdict:
+    return await _memory_live(
+        "memory_all_search_down",
+        "toda agregação falhando (mongot fora) → fatos mais recentes, o turno segue",
+        target="aggregate:", scenario="index_building", expect_modes={"recent"})
+
+
+
+async def scenario_memory_concurrent_tenants() -> Verdict:
+    """LIVE: 36 recuperações simultâneas de 3 tenants (inclui o vazio) — nenhuma cruza."""
+    name = "memory_concurrent_tenants"
+    assertion = ("36 load_relevant simultâneos (mesmo tenant e tenants diferentes) → cada "
+                 "resultado só tem fatos active do próprio tenant; o tenant vazio volta vazio")
+    if os.getenv("LIVE", "").strip() not in {"1", "true", "yes"}:
+        return Verdict(name, assertion, False, "LIVE=1 ausente — cenário não roda contra Atlas",
+                       0.0, skipped=True)
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import isolation
+
+    isolation.use_test_databases(what=f"chaos_suite {name}")
+    if (refusal := require_test_db(name)):
+        return Verdict(name, "isolamento de banco", False, refusal, 0.0)
+    import db
+    import memory
+    from bson import ObjectId
+
+    users = ["eval.mem.ana", "eval.mem.bruno", "eval.mem.vazio"] * 12
+    queries = ["como prefiro ser contatado?", "PED-2041", "qual meu limite de gasto?"]
+    start = perf_counter()
+    outs = await asyncio.gather(*(memory.load_relevant(u, queries[i % 3])
+                                  for i, u in enumerate(users)), return_exceptions=True)
+    elapsed = perf_counter() - start
+    errors = [o for o in outs if isinstance(o, BaseException)]
+    all_ids = {ObjectId(f["_id"]) for o in outs if isinstance(o, dict) for f in o["facts"]}
+    owners = {str(d["_id"]): d for d in await db.aggregate_list(
+        db.poc()["agent_memory"], [{"$match": {"_id": {"$in": list(all_ids)}}},
+                                   {"$project": {"user_key": 1, "active": 1}}],
+        length=len(all_ids) or 1)}
+    leaks = 0
+    for user, out in zip(users, outs):
+        if isinstance(out, BaseException):
+            continue
+        for f in out["facts"]:
+            o = owners.get(f["_id"], {})
+            if o.get("user_key") != user or o.get("active") is not True:
+                leaks += 1
+    empty_ok = all(not o["facts"] for u, o in zip(users, outs)
+                   if u == "eval.mem.vazio" and isinstance(o, dict))
+    ok = not errors and leaks == 0 and empty_ok
+    return Verdict(name, assertion, ok, f"erros={len(errors)} vazamentos={leaks} "
+                   f"vazio_ok={empty_ok} em {elapsed:.2f}s", elapsed)
+
 
 SCENARIOS = {
     "tool_timeout": scenario_tool_timeout,
@@ -925,6 +1116,13 @@ SCENARIOS = {
     "checkpoint_native_persistence": scenario_checkpoint_native_persistence,
     "crash_resume": scenario_crash_resume,
     "crash_mid_tool": scenario_crash_mid_tool,
+    "memory_fusion_rejected": scenario_memory_fusion_rejected,
+    "memory_rerank_rejected": scenario_memory_rerank_rejected,
+    "memory_bm25_building": scenario_memory_bm25_building,
+    "memory_vector_absent": scenario_memory_vector_absent,
+    "memory_max_time": scenario_memory_max_time,
+    "memory_all_search_down": scenario_memory_all_search_down,
+    "memory_concurrent_tenants": scenario_memory_concurrent_tenants,
 }
 
 

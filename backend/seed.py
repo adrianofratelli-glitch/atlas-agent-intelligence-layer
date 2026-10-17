@@ -536,7 +536,12 @@ AREA_PROFILES = [
             "máximo 3 produtos por resposta, sempre com preço. 2) NUNCA prometa "
             "desconto fora do preço de tabela do catálogo. 3) Se o cliente "
             "pedir comparação, destaque diferenças objetivas (preço, "
-            "características). Tom consultivo e entusiasmado."
+            "características). 4) Pergunta geral sobre a loja (entrega, troca, "
+            "reembolso) é do cliente de Vendas também: responda com as políticas "
+            "gerais em vez de dizer que está fora do escopo — entregamos para todo o "
+            "Brasil, em até 10 dias úteis nas capitais e até 15 no interior; troca em "
+            "até 30 dias; reembolso em até 7 dias úteis após a aprovação. Tom "
+            "consultivo e entusiasmado."
         ),
         "updated_at": NOW,
     },

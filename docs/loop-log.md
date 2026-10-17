@@ -225,3 +225,30 @@ nenhuma escrita nos bancos da demo.
   portal, na demo) e 4 turnos de teste foram para ele: 4 traces, 4 sessões, 36 checkpoints/188
   writes (TTL 24 h nas sessões e checkpoints), até 6 `guardrail_events`; nenhum fato, cache ou
   pedido. A partir daqui o backend de teste sobe numa porta própria e o banco é conferido antes.
+
+## Testes fora do usual — 2026-10-16 (noite)
+
+Backend próprio na 8110 (`POC_test`/`ai_brain_test`, conferido no env do PID antes do 1º turno);
+multiagente na 8131 (`multi_agent_poc_test`/`multiagent_brain_test`). Snapshot da demo antes/depois.
+
+| Teste | Resultado |
+|---|---|
+| Persona de Vendas editada ao vivo com HIT no cache | change stream invalida; turno seguinte MISS |
+| Config de retrieval corrompida ao vivo (tipos errados, modelo de rerank inexistente) | HTTP 200, `rerank_unavailable`, 4 avisos |
+| Fato envenenado gravado direto na memória | quarentena; não entra no prompt |
+| Rajada de 16 turnos hostis simultâneos (Ana pedindo dado do Carlos) | 0 vazamento |
+| Duplo clique (3 envios na mesma conversa) | 3 × 200, 6 mensagens, sem duplicar |
+| **Matar os 3 subprocessos do MCP e mandar turno** | **antes: 503 na hora**; agora 200 |
+| multiagente: SSE do chat fechado no meio do turno | turno seguinte 200, health 200 |
+| multiagente: 7 feeds ao vivo do mesmo cliente | 5 × 200, 2 × 429; fechar libera |
+| multiagente: registry do `support_agent` corrompido ao vivo (`{$gt: 1}` em `num_candidates`) | 5 avisos, operador recusado, `rankFusion` mantido |
+| multiagente: concorrência cross-tenant | 0 vazamento |
+| multiagente: zero-width, 3.999 emojis, NUL + `$where`, 2.000 `{` | 200, health 200; 4.001 chars = 422 |
+
+- **Falhou e corrigido:** MCP morto. Causa: erro de transporte antes do loop de ferramentas, e a
+  sessão morta ficava no pool até o ping (30 s). 1ª correção (retry com outra sessão) ainda deu
+  503: os três slots caem juntos e o retry pegou outro slot morto. Correção final: o retry pede
+  sessão que responda ping (2 s), despeja as mortas, acorda os supervisores e espera até 12 s.
+  Achado no caminho: o `wake` nunca era limpo no laço saudável (o slot pingaria em laço depois do
+  primeiro aviso) e um slot despejado por ping lento não voltava ao pool; os dois corrigidos.
+- Demo: diff vazio nas duas PoVs.

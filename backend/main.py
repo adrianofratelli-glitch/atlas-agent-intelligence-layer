@@ -98,24 +98,132 @@ async def _mcp_supervisor(app: FastAPI, stop: asyncio.Event, slot: int) -> None:
                 logger.info("sessão MongoDB MCP Server [slot %d] estabelecida (aggregate aquecido em %d ms)",
                             slot, int(warm_ms))
                 while not stop.is_set():
-                    try:
-                        await asyncio.wait_for(stop.wait(), timeout=MCP_PING_SECONDS)
-                    except asyncio.TimeoutError:
-                        await session.send_ping()  # falhou → reconecta lá fora
+                    # ping a cada MCP_PING_SECONDS, ou JÁ quando um turno viu o transporte
+                    # do MCP quebrar (wake): antes a sessão morta ficava no pool até 30 s
+                    wake = getattr(app.state, "mcp_wake", None)
+                    if wake is None:
+                        wake = app.state.mcp_wake = asyncio.Event()
+                    waiters = [asyncio.create_task(stop.wait()), asyncio.create_task(wake.wait())]
+                    await asyncio.wait(waiters, timeout=MCP_PING_SECONDS, return_when=asyncio.FIRST_COMPLETED)
+                    for w in waiters:
+                        w.cancel()
+                    if stop.is_set():
+                        break
+                    # os supervisores que esperavam já foram liberados pelo set(); sem limpar,
+                    # o próximo wait volta na hora e o slot pinga em laço
+                    wake.clear()
+                    await asyncio.wait_for(session.send_ping(), timeout=5)  # falhou: reconecta lá fora
+                    # ping OK: se um turno despejou o slot por engano (ping lento), devolve
+                    app.state.mcp_pool[slot] = session
         except Exception as exc:  # noqa: BLE001 — sessão caiu → reconectar só ESTE slot
             app.state.mcp_pool[slot] = None
             app.state.mcp_errors[slot] = str(exc)
             if not stop.is_set():
                 logger.warning("sessão MCP [slot %d] indisponível (%s) — reconectando em %ss",
                                slot, str(exc)[:200], MCP_RETRY_SECONDS)
-                try:
-                    await asyncio.wait_for(stop.wait(), timeout=MCP_RETRY_SECONDS)
-                except asyncio.TimeoutError:
-                    pass
+                # espera o intervalo de retry OU um pedido de reconexão imediata (turno sem slot)
+                wake = getattr(app.state, "mcp_wake", None)
+                if wake is None:
+                    wake = app.state.mcp_wake = asyncio.Event()
+                waiters = [asyncio.create_task(stop.wait()), asyncio.create_task(wake.wait())]
+                await asyncio.wait(waiters, timeout=MCP_RETRY_SECONDS, return_when=asyncio.FIRST_COMPLETED)
+                for w in waiters:
+                    w.cancel()
+                wake.clear()
         finally:
             app.state.mcp_pool[slot] = None
             if session is not None:
                 forget_connection_id(session)  # limpa _CONNECTION_IDS — não cresce sem teto
+
+
+MCP_WAIT_SECONDS = float(os.getenv("MCP_WAIT_SECONDS", "12"))
+
+
+_MCP_TRANSPORT_ERRORS = {"BrokenResourceError", "ClosedResourceError", "EndOfStream",
+                         "BrokenPipeError", "ConnectionResetError"}
+
+
+def is_mcp_transport_error(exc: BaseException) -> bool:
+    """O subprocess do MCP Server morreu (stdio fechado), não um erro de negócio."""
+    if type(exc).__name__ in _MCP_TRANSPORT_ERRORS or "connection closed" in str(exc).lower():
+        return True
+    inner = getattr(exc, "exceptions", None)   # ExceptionGroup do anyio
+    return bool(inner) and any(is_mcp_transport_error(e) for e in inner)
+
+
+def kick_mcp_supervisors(app: FastAPI) -> None:
+    wake = getattr(app.state, "mcp_wake", None)
+    if wake is not None:
+        wake.set()
+
+
+def evict_mcp_session(app: FastAPI, session) -> None:
+    """Tira do pool uma sessão cujo transporte quebrou (o supervisor reabre o slot)."""
+    pool = getattr(app.state, "mcp_pool", None) or []
+    for i, item in enumerate(pool):
+        if item is session:
+            pool[i] = None
+
+
+async def run_agent_resilient(app: FastAPI, session, **kwargs):
+    """run_agent com UMA nova tentativa se o MCP morreu antes do loop de ferramentas (a lista
+    de tools é a primeira chamada): nada de negócio foi escrito ainda, e a extração de memória
+    deduplica por fact_norm. Medido em 2026-10-16 matando o MCP: antes, 503 na hora."""
+    try:
+        return await run_agent(session, **kwargs)
+    except Exception as exc:  # noqa: BLE001
+        if not is_mcp_transport_error(exc):
+            raise
+        logger.warning("transporte do MCP quebrou no turno; reconectando e refazendo uma vez")
+        evict_mcp_session(app, session)
+        kick_mcp_supervisors(app)
+        fresh = await acquire_mcp_session(app, verify=True)
+        if fresh is None:
+            raise SafeQueryError("mcp", "O MongoDB MCP Server caiu e ainda está reconectando. "
+                                        "Tente de novo em alguns segundos.") from exc
+        try:
+            return await run_agent(fresh, **kwargs)
+        except Exception as again:  # noqa: BLE001
+            if not is_mcp_transport_error(again):
+                raise
+            evict_mcp_session(app, fresh)
+            kick_mcp_supervisors(app)
+            raise SafeQueryError("mcp", "O MongoDB MCP Server caiu e ainda está reconectando. "
+                                        "Tente de novo em alguns segundos.") from again
+
+
+async def _session_alive(session) -> bool:
+    try:
+        await asyncio.wait_for(session.send_ping(), timeout=2)
+        return True
+    except Exception:  # noqa: BLE001 — qualquer falha no ping = sessão inutilizável
+        return False
+
+
+async def acquire_mcp_session(app: FastAPI, wait_seconds: float = MCP_WAIT_SECONDS,
+                              verify: bool = False) -> ClientSession | None:
+    """Sessão viva do pool; se nenhuma estiver de pé (subprocess do MCP caiu), acorda os
+    supervisores para reconectarem JÁ e espera até `wait_seconds`. Medido (2026-10-16, teste
+    fora do usual matando o MCP): sem isto o turno recebia 503 na hora e o pool só voltava
+    ~40 s depois (ping + intervalo de retry); a reabertura em si leva ~5 s."""
+    # verify=True (nova tentativa depois de transporte quebrado): o subprocess costuma cair em
+    # todos os slots juntos e o supervisor só percebe no ping; sem o ping aqui a 2ª tentativa
+    # pegava outro slot morto (medido: 503 mesmo com retry).
+    deadline = time.monotonic() + max(wait_seconds, 0)
+    woke = False
+    while True:
+        session = get_mcp_session(app)
+        if session is not None:
+            if not verify or await _session_alive(session):
+                return session
+            evict_mcp_session(app, session)
+            continue
+        if time.monotonic() >= deadline:
+            return None
+        if not woke:
+            kick_mcp_supervisors(app)
+            woke = True
+        await asyncio.sleep(0.25)
 
 
 def get_mcp_session(app: FastAPI) -> ClientSession | None:
@@ -180,6 +288,7 @@ async def lifespan(app: FastAPI):
     app.state.mcp_pool = [None] * MCP_POOL_SIZE
     app.state.mcp_errors = ["pool MCP ainda inicializando"] * MCP_POOL_SIZE
     app.state.mcp_rr_counter = itertools.count()
+    app.state.mcp_wake = asyncio.Event()
     stop = asyncio.Event()
     pool_tasks = [
         asyncio.create_task(_mcp_supervisor(app, stop, slot))
@@ -768,7 +877,7 @@ async def agent_playlist():
 @app.get("/api/agent/tools")
 async def agent_tools(request: Request):
     """The MongoDB tools the agent has available through the MCP Server."""
-    session = get_mcp_session(request.app)
+    session = await acquire_mcp_session(request.app)
     if session is None:
         return {"tools": []}
     tools = [{"name": t["name"], "kind": "write" if t["name"] in WRITE_TOOLS else "read"}
@@ -789,7 +898,7 @@ class AgentRunBody(BaseModel):
 
 @app.post("/api/agent/run")
 async def agent_run(request: Request, body: AgentRunBody):
-    session = get_mcp_session(request.app)
+    session = await acquire_mcp_session(request.app)
     if session is None:
         errors = getattr(request.app.state, "mcp_errors", None) or []
         detail = next((e for e in errors if e), "")
@@ -808,13 +917,9 @@ async def agent_run(request: Request, body: AgentRunBody):
                        multiplier=auth.resolve_rate_limit_multiplier(request))
     conversation_id = body.conversation_id or f"conv_{uuid4().hex[:16]}"
     try:
-        result = await run_agent(
-            session,
-            scenario=body.scenario,
-            message=body.message,
-            conversation_id=conversation_id,
-            user_key=user_key,
-        )
+        result = await run_agent_resilient(request.app, session, scenario=body.scenario,
+                                           message=body.message, conversation_id=conversation_id,
+                                           user_key=user_key)
     except SafeQueryError:
         raise
     except ValueError as exc:
@@ -898,7 +1003,7 @@ async def agent_run_stream(request: Request, body: AgentRunBody):
     AGENT_TURN_TIMEOUT_SECONDS (120s) sem feedback incremental era o problema.
     Endpoint novo em vez de mudar o antigo: mantém /api/agent/run compatível
     para quem ainda consome request/response simples (smoke test, scripts)."""
-    session = get_mcp_session(request.app)
+    session = await acquire_mcp_session(request.app)
     if session is None:
         errors = getattr(request.app.state, "mcp_errors", None) or []
         detail = next((e for e in errors if e), "")
@@ -925,8 +1030,8 @@ async def agent_run_stream(request: Request, body: AgentRunBody):
 
         async def run() -> None:
             try:
-                result = await run_agent(
-                    session, scenario=body.scenario, message=body.message,
+                result = await run_agent_resilient(
+                    request.app, session, scenario=body.scenario, message=body.message,
                     conversation_id=conversation_id, user_key=user_key,
                     on_event=on_event,
                 )

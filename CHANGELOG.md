@@ -10,6 +10,8 @@
 - Fix: the full LIVE chaos suite wrote sessions and LangGraph checkpoints to the demo database (`db` was imported before the test-database switch); it now isolates at import and every LIVE scenario refuses a demo-bound module.
 - Long-term memory for every demo user: `seed.py` seeds two preference facts per identity (`SEED_MEMORY`), and facts only reach the prompt when the question is about the customer (phrase gate, first person, or the calibrated turn classifier; fail-closed). A generic question still answers generically and can be written to the area cache. Each area gets a "🧠 Personalização" chip.
 - Agent tab layout revised after portal validation: the page scrolls again and the three columns keep a tall, stable height when the inspector or flags open; events still stream live.
+- MCP resilience: when the MongoDB MCP Server subprocesses die mid-turn, the turn wakes the slot supervisors, waits up to `MCP_WAIT_SECONDS` (12 s) for a session that answers a ping and retries once (nothing was written yet: tools are listed first). Measured killing all three subprocesses: before, HTTP 503 at once and the pool back only ~40 s later; now HTTP 200 with the right answer (~6 s of reconnection inside the turn). A second transport failure returns a clear `mcp` error instead of an empty 500 message.
+- Sales persona: general store questions (delivery, exchange, refund) get the general policies instead of "out of scope".
 - `seed.py` updates an existing BM25 index (it used to only print "already exists"); requires `pov-shared` >= 0.3.0 for the new retrieval (the app still starts without it).
 
 - Atualiza dependências compatíveis e pisos de segurança; alinha metadados de versão entre aplicação e frontend.

@@ -252,3 +252,18 @@ multiagente na 8131 (`multi_agent_poc_test`/`multiagent_brain_test`). Snapshot d
   Achado no caminho: o `wake` nunca era limpo no laço saudável (o slot pingaria em laço depois do
   primeiro aviso) e um slot despejado por ping lento não voltava ao pool; os dois corrigidos.
 - Demo: diff vazio nas duas PoVs.
+
+## Reset das demos e Demo automática pelo portal — 2026-10-16 (noite)
+
+- Reset controlado das duas demos (autorizado pelo usuário): singleagent `seed.py` (checkpoints
+  103 → 0, writes 539 → 0, sessões/traces/eventos zerados, 8 fatos semeados, config de retrieval
+  criada; preflight PRONTO com 2 avisos de app parado/tracing off); multiagente `reset_demo.py`
+  (26 checkpoints órfãos removidos, índices READY).
+- **Falhou:** a Demo automática pelo portal parou no 5º script (troca para a Marina) com 409 "A
+  identidade do token difere da pedida", duas vezes. Causa: `agentRunStream` usa `fetch` direto e
+  não esperava o login pendente; o login da troca só roda no `useEffect`, depois de o turno sair.
+  Na 2ª tentativa o portal servia o build antigo (`vite preview` do `dist/`): rebuild necessário.
+- **Correção:** o stream espera o login; turno com troca faz o login antes. Teste novo falha sem a
+  correção e passa com ela. Depois: 13/13 scripts (Adriano → Marina → Adriano → Ana → Carlos →
+  Adriano), 0 degradado, 0 409; injeção e CPF bloqueados, desconto bloqueado no Financeiro e
+  orientado no Suporte, Vendas responde entrega/troca/reembolso.

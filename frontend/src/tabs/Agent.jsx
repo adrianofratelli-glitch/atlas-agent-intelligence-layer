@@ -357,6 +357,8 @@ export default function Agent({ state, setState }) {
       (switched ? convMapRef.current[target.user_key]
                 : conversationId ?? convMapRef.current[target.user_key]) ?? null;
     try {
+      // o login da troca roda num useEffect, DEPOIS do render; o turno sairia antes dele
+      if (switched) await api.login(target.user_key);
       const result = await api.agentRunStream(
         { ...payload, conversation_id: convId, user_key: target.user_key },
         (event) => {

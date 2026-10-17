@@ -43,11 +43,13 @@ export function setAuthToken(token) {
 let loginSeq = 0;
 let pendingLogin = Promise.resolve();
 
+async function waitLogin() {
+  let waited;
+  do { waited = pendingLogin; await waited.catch(() => {}); } while (waited !== pendingLogin);
+}
+
 async function request(path, options = {}) {
-  if (path !== '/api/auth/token') {
-    let waited;
-    do { waited = pendingLogin; await waited.catch(() => {}); } while (waited !== pendingLogin);
-  }
+  if (path !== '/api/auth/token') await waitLogin();
   return boundedRequest(async (signal) => {
     let res;
     try {
@@ -127,6 +129,9 @@ export const api = {
   // os gera, em vez de só no final. Resolve com o `result` final (mesmo shape
   // de agentRun) quando o turno termina.
   agentRunStream: async (body, onTrace) => {
+    // o stream usa fetch direto: sem esperar o login pendente, a demo automática que
+    // troca de identidade saía com o token do usuário anterior (409 do backend)
+    await waitLogin();
     let res;
     try {
       res = await fetch('/api/agent/run/stream', {

@@ -8,6 +8,8 @@
 - Semantic cache invalidated by a Change Stream on `ai_brain.area_profiles` (resume token, backoff, reconcile on history lost); stats in `/api/health`, checked by the preflight.
 - Queryable Encryption demo script for CPF/phone/income in a test-only collection (ADR-011).
 - Fix: the full LIVE chaos suite wrote sessions and LangGraph checkpoints to the demo database (`db` was imported before the test-database switch); it now isolates at import and every LIVE scenario refuses a demo-bound module.
+- Long-term memory for every demo user: `seed.py` seeds two preference facts per identity (`SEED_MEMORY`), and facts only reach the prompt when the question is about the customer (phrase gate, first person, or the calibrated turn classifier; fail-closed). A generic question still answers generically and can be written to the area cache. Each area gets a "🧠 Personalização" chip.
+- Agent tab layout revised after portal validation: the page scrolls again and the three columns keep a tall, stable height when the inspector or flags open; events still stream live.
 - `seed.py` updates an existing BM25 index (it used to only print "already exists"); requires `pov-shared` >= 0.3.0 for the new retrieval (the app still starts without it).
 
 - Atualiza dependências compatíveis e pisos de segurança; alinha metadados de versão entre aplicação e frontend.

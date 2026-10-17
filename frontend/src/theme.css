@@ -1359,3 +1359,13 @@ footer.app-footer p {
   .content--fit .demo-bar { margin: 0 0 0.4rem; padding: 4px 10px; }
   .content--fit .agent-col-chat .thought-box { display: none; }
 }
+
+/* Revisão 2026-10-16 (validação no portal): a tela única encurtava demais o chat e escondia o
+   roteiro quando o inspector abria. A página volta a rolar; as colunas têm altura própria,
+   generosa e estável (não encolhem quando algo abre acima delas). */
+@media (min-width: 1100px) and (min-height: 700px) {
+  .content--fit .agent-shell { height: auto; overflow: visible; }
+  .content--fit .agent-grid { flex: none; height: clamp(620px, calc(100dvh - 150px), 920px); }
+  .content--fit .agent-col-chat .thought-box { display: block; max-height: 110px; }
+  .content--fit .agent-col-chat .agent-chat { min-height: 220px; }
+}

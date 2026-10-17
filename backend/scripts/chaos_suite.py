@@ -963,6 +963,14 @@ async def _memory_live(name, assertion, *, target, scenario, expect_modes, reran
     import memory
     from bson import ObjectId
 
+    # fatos do eval/memory_recall.json no banco de teste (idempotente): um reseed do *_test apaga
+    # a memória de runtime, e o cenário não pode depender de estado deixado por outra rodada
+    import json as _json
+
+    import memory_recall_eval as mre
+    dataset = _json.loads(mre.DATASET.read_text(encoding="utf-8"))
+    await mre.seed_fixtures(dataset)
+    await mre.wait_indexed(dataset)
     if memory._capabilities is not None:
         memory._capabilities.reset()
     original = memory._retrieval_config_doc

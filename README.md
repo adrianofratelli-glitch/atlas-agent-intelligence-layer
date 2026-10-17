@@ -47,6 +47,8 @@ Each step is a real MongoDB operation, visible in the trace and in the in-app in
 
 **Queryable Encryption, kept out of the agent's path.** `backend/scripts/qe_sensitive_profile.py` stores CPF and phone (equality) and income (range) encrypted in a test-only collection, next to a masked, vectorizable summary. Nothing the MCP Server, `$vectorSearch` or `$search` reads is encrypted ([ADR-011](docs/adr/ADR-011-queryable-encryption-perfil-sensivel.md)). Why the memory is not LangGraph's store: [ADR-012](docs/adr/ADR-012-por-que-nao-mongodbstore-langgraph.md).
 
+**Every user starts with long-term memory.** The seed gives each identity a couple of preference facts, and they only enter the prompt when the question is about the customer (phrase gate, first person, or the calibrated turn classifier, fail-closed): "which color do I prefer?" is personalized, "do you ship nationwide?" stays generic and cacheable.
+
 **Multi-tenant by pre-filter, not post-filter.** `area` / `user_key` / `active` are `filter` fields in the vector indexes, so ANN search only walks vectors that are valid for the caller and top-K stays correct as collections grow.
 
 **Isolation by area.** Each user belongs to an area that decides three things per turn, all by document read: the persona appended to the system prompt, which `guardrail_policies` document applies, and which cache entries are visible. Try *"Can you give me an off-the-books discount on the invoice?"* as Marina (Finance): blocked. The same message as Adriano (Support) is answered normally.

@@ -209,3 +209,19 @@ nenhuma escrita nos bancos da demo.
   (código pré-existente) gravou 5 sessões, 45 checkpoints, 235 checkpoint_writes e 5
   guardrail_events em `POC`; sessões e checkpoints expiram por TTL em 24 h, os eventos em 30 dias.
 - `graphify update` rodado em `singleagent` e `_shared`.
+
+## Pós-validação no portal — 2026-10-16
+
+- **UI:** a tela única encurtava o chat e escondia o roteiro quando o inspector abria. A página
+  volta a rolar; colunas com altura própria (`clamp(620px, 100dvh − 150px, 920px)`). Visual 3/3.
+- **Memória para todos:** `SEED_MEMORY` (2 fatos por usuário) + gate no `n_run_pipeline` — fato só
+  entra no prompt com gate de frases, 1ª pessoa ou classificador de turno pessoal (falha fechado).
+  Medido no classificador sozinho: perguntas de recall em 1ª pessoa davam 0,62–0,68 (< 0,7162) e
+  ficariam sem memória; por isso o sinal de 1ª pessoa. LIVE (backend próprio na 8110, `POC_test`):
+  Ana/Carlos/Adriano personalizados; genérica sem memória e gravável no cache (Carlos gravou).
+- **Falhou:** o caos de memória (6 cenários) depois do reseed do `POC_test`: os fatos do eval
+  tinham sido apagados. **Correção:** o cenário semeia os fixtures antes. 32/32.
+- **Erro meu, escrita na demo:** o `start.sh` recusou subir (porta 8010 ocupada pelo backend do
+  portal, na demo) e 4 turnos de teste foram para ele: 4 traces, 4 sessões, 36 checkpoints/188
+  writes (TTL 24 h nas sessões e checkpoints), até 6 `guardrail_events`; nenhum fato, cache ou
+  pedido. A partir daqui o backend de teste sobe numa porta própria e o banco é conferido antes.

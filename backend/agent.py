@@ -653,6 +653,10 @@ SYSTEM = _render_system(_SYSTEM_TEMPLATE)
 # Fallback: área sem entrada usa "default".
 AREA_SCENARIOS = {
     "default": {
+        "personalizacao": {
+            "label": "🧠 Personalização",
+            "message": "Me indica um fone bom pra eu usar no meu dia a dia?",
+        },
         "pedido_danificado": {
             "label": "📦 Pedido danificado",
             "message": (
@@ -721,6 +725,10 @@ AREA_SCENARIOS = {
         },
     },
     "financeiro": {
+        "personalizacao": {
+            "label": "🧠 Personalização",
+            "message": "Como eu costumo pagar e em que nome sai a minha nota?",
+        },
         "reembolso": {
             "label": "💸 Reembolso da soundbar",
             "message": (
@@ -763,6 +771,10 @@ AREA_SCENARIOS = {
         },
     },
     "logistica": {
+        "personalizacao": {
+            "label": "🧠 Personalização",
+            "message": "Onde e em que horário eu costumo receber as entregas?",
+        },
         "status": {
             "label": "🚚 Rastrear entrega",
             "message": "Onde está o meu pedido PED-3001? Já foi despachado?",
@@ -808,6 +820,10 @@ AREA_SCENARIOS = {
         },
     },
     "vendas": {
+        "personalizacao": {
+            "label": "🧠 Personalização",
+            "message": "Qual cor de produto eu prefiro para os presentes da equipe?",
+        },
         "recomendacao": {
             "label": "🎧 Recomendar produto",
             "message": (

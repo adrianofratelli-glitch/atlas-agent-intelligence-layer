@@ -171,6 +171,29 @@ def _faq_source_hash(item: dict) -> str | None:
     return persona_hash(profile)
 
 
+# Fatos de memória longa por usuário. Com o gate de 2026-10-16 (agent_graph._memory_relevance)
+# eles só entram no prompt quando a pergunta é sobre o cliente, então a Ana continua gravando
+# respostas genéricas no cache de Vendas (roteiro "cache por área" da demo automática).
+SEED_MEMORY = [
+    {"_id": "seed_mem_adriano_1", "user_key": "cliente-demo", "category": "preferencia",
+     "fact": "Usa os fones principalmente em reuniões de trabalho por vídeo."},
+    {"_id": "seed_mem_adriano_2", "user_key": "cliente-demo", "category": "preferencia",
+     "fact": "Prefere receber a nota fiscal das compras por e-mail."},
+    {"_id": "seed_mem_ana_1", "user_key": "ana.vendas", "category": "preferencia",
+     "fact": "Compra presentes de fim de ano para a equipe de vendas."},
+    {"_id": "seed_mem_ana_2", "user_key": "ana.vendas", "category": "preferencia",
+     "fact": "Prefere produtos na cor preta."},
+    {"_id": "seed_mem_marina_1", "user_key": "marina.fin", "category": "contexto",
+     "fact": "Paga as compras da empresa com o cartão corporativo."},
+    {"_id": "seed_mem_marina_2", "user_key": "marina.fin", "category": "preferencia",
+     "fact": "Pede a nota fiscal sempre no CNPJ da empresa."},
+    {"_id": "seed_mem_carlos_1", "user_key": "carlos.log", "category": "contexto",
+     "fact": "Recebe as entregas no centro de distribuição de Contagem, em Minas Gerais."},
+    {"_id": "seed_mem_carlos_2", "user_key": "carlos.log", "category": "preferencia",
+     "fact": "Prefere janela de entrega pela manhã, antes das 11h."},
+]
+
+
 # Retrieval da memória longa ($rankFusion), config viva: lida a cada turno por
 # memory.load_relevant. Valores MEDIDOS com scripts/memory_recall_eval.py (2026-10-16,
 # eval/memory_recall.json): 8 candidatos por perna e pesos iguais; ver docs/adr/ADR-008.
@@ -434,9 +457,8 @@ def _norm(text: str) -> str:
 APP_USERS = [
     {"_id": "user_cliente_demo", "user_key": "cliente-demo",
      "name": "Adriano", "area": "default"},
-    # Ana não acumula memória longa na demo — é dela que sai a resposta "limpa"
-    # que demonstra o cache gravado por área (usuários com fatos na memória geram
-    # respostas personalizadas, que nunca vão para o cache compartilhado).
+    # Todos têm memória longa semeada (SEED_MEMORY). A Ana continua gravando a resposta
+    # genérica do roteiro de cache por área: fato só entra no prompt em pergunta pessoal.
     {"_id": "user_ana_vendas", "user_key": "ana.vendas",
      "name": "Ana", "area": "vendas"},
     {"_id": "user_marina_fin", "user_key": "marina.fin",
@@ -1060,6 +1082,17 @@ def main(argv: list[str] | None = None):
     else:
         wiped = {name: poc[name].delete_many({}).deleted_count for name in RUNTIME_COLLECTIONS}
         print("Runtime zerado: " + ", ".join(f"{k}={v}" for k, v in wiped.items()))
+
+    # Memória longa semeada: todo usuário começa com fatos próprios (personalização na demo).
+    # `_id` estável + $setOnInsert: o reset completo restaura; `--keep-runtime` preserva o que o
+    # cliente mudou ao vivo (supersessão). Sem PII: são preferências, não identificação.
+    for fact in SEED_MEMORY:
+        poc["agent_memory"].update_one({"_id": fact["_id"]}, {"$setOnInsert": {
+            **fact, "fact_norm": " ".join(fact["fact"].lower().split()), "active": True,
+            "source_session": "seed", "created_at": NOW, "updated_at": NOW,
+            "superseded_by": None}}, upsert=True)
+    print(f"Memória longa semeada: {len(SEED_MEMORY)} fatos para "
+          f"{len({f['user_key'] for f in SEED_MEMORY})} usuários")
 
     # Guardrail semantic denylist (Vector Search over forbidden utterances).
     # Frases promovidas pela revisão humana (review_candidate) são runtime: o

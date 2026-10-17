@@ -358,6 +358,22 @@ def _memory_explain(ltm: dict, retrieval: dict) -> dict:
             "search_ms": retrieval.get("search_ms"), "facts": facts}
 
 
+_FIRST_PERSON = (" eu ", " meu ", " minha ", " meus ", " minhas ", " me ", " mim ", " comigo ")
+
+
+async def _memory_relevance(user_msg: str, personal_turn: bool) -> dict | None:
+    """None = a memória entra. Turno já pessoal pelo gate de frases, ou mensagem em 1ª pessoa
+    ("pra que EU uso", "MEU limite"): o classificador de turno sozinho marcou como genéricas
+    perguntas de recall assim (medido: 0,62–0,68 < 0,7162). Só pergunta sem nada disso
+    ("vocês entregam para todo o Brasil?") passa pelo classificador."""
+    if personal_turn or any(p in memory._fold(user_msg) for p in _FIRST_PERSON):
+        return None
+    try:
+        return await turn_classifier.classify(user_msg)
+    except Exception:  # noqa: BLE001 — falha fechado: trata como pessoal (memória entra)
+        return None
+
+
 async def n_run_pipeline(state: TurnState, config) -> dict:
     """Caminho completo: memória longa + histórico + tools + orçamento em
     paralelo, monta o prompt, roda o loop de ferramentas (com extração de
@@ -372,13 +388,25 @@ async def n_run_pipeline(state: TurnState, config) -> dict:
     user_msg, user_key = state["user_msg"], state["user_key"]
     conversation_id = state["conversation_id"]
 
-    ltm, (history, history_summary), tools, budget_brl = await asyncio.gather(
+    ltm, (history, history_summary), tools, budget_brl, relevance = await asyncio.gather(
         memory.load_relevant(user_key, user_msg),
         agent._load_recent_history(conversation_id, user_key),
         agent.list_agent_tools(session),
         memory.active_budget(user_key),
+        _memory_relevance(user_msg, state["personal_turn"]),
     )
     metrics["reads"] += 1
+    # Memória longa só entra no prompt quando a pergunta é SOBRE o cliente (2026-10-16): todo
+    # usuário tem fatos semeados, e uma pergunta genérica ("vocês entregam para todo o Brasil?")
+    # não pode virar resposta personalizada — senão nunca mais vai para o cache da área. O
+    # classificador de turno é o mesmo, calibrado, do cache; erro = pessoal (falha fechado).
+    if ltm.get("facts") and relevance is not None and not relevance["personal"]:
+        withheld = len(ltm["facts"])
+        ltm = {**ltm, "facts": [], "withheld_generic": withheld}
+        _emit(ctx, trace, "retrieve", "message", actor="mongodb",
+              text=f"Memória longo prazo: {withheld} fato(s) do cliente NÃO entraram no prompt — "
+                   f"pergunta genérica (classificador de turno {relevance['score']:.3f} < "
+                   f"{relevance['threshold']}). A resposta pode ir para o cache da área.")
     # Teto dito na própria mensagem também vira filtro de servidor; vale o MENOR dos dois.
     message_budget = memory.budget_from_message(user_msg)
     if message_budget and (not budget_brl or message_budget < budget_brl):

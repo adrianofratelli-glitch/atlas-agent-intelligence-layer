@@ -1,5 +1,7 @@
 # Queries, pipelines e índices — singleagent
 
+> Números de linha podem ficar defasados após mudanças: a fonte atualizada é [MAPA_DO_CODIGO.md](../MAPA_DO_CODIGO.md).
+
 > Todo item aqui foi extraído do código real (grep de `.aggregate(`, `.find(`, `create_index`, `$vectorSearch`, `expireAfterSeconds`, em 2026-09-19). Nada inventado. Se o código mudar, este arquivo fica desatualizado até a próxima passada — não confie cegamente em linha exata sem checar o arquivo.
 
 ## Sumário
@@ -14,7 +16,7 @@
 
 ## 1. Índices Atlas Vector Search (autoEmbed voyage-4)
 
-Definidos em `backend/seed.py:768-803` (`VECTOR_INDEXES`, `_vector_index_definition`), criados/atualizados por `create_vector_indexes` (`seed.py:806`).
+Definidos em `backend/seed.py:839` (`VECTOR_INDEXES`) e `seed.py:867` (`_vector_index_definition`), criados/atualizados por `create_vector_indexes` (`seed.py:896`).
 
 Todos usam `indexingMethod: "flat"` (não HNSW) — decisão do ADR-001, risco 1: poucos tenants, <10k vetores por área/usuário, filtro já seletivo o bastante. Reavaliar para HNSW só se algum tenant passar de ~10k vetores.
 
@@ -29,7 +31,7 @@ O `filter` usa campos declarados no índice, não `.filter()` em Python: o `$vec
 
 ## 2. Índice Atlas Search BM25 (lexical)
 
-`backend/seed.py:779-786` (`BM25_INDEXES`):
+`backend/seed.py:856` (`BM25_INDEXES`):
 
 ```python
 {"db": "POC", "collection": "agent_memory", "name": "agent_memory_bm25",
@@ -68,7 +70,7 @@ Por que existe: reduzir custo/latência — pergunta reformulada ("como peço re
 
 Fallback em cascata se o índice não tiver o campo `filter` ainda: `with_filter=False` (25 candidatos, pós-filtro em Python) → se o índice nem existir: `_exact_fallback` (match exato por `question_norm`, `cache.py:153`).
 
-### 3.2 Denylist semântico do guardrail — `backend/guardrails.py:125-140` (`_semantic_denylist`)
+### 3.2 Denylist semântico do guardrail — `backend/policy_guardrails.py:192` (`_denylist_top`, chamada por `_semantic_denylist`, linha 279)
 
 ```python
 [
@@ -204,8 +206,8 @@ Pós-processamento: `graph.py:summarize_order_chain` (linha 50-71) transforma a 
 | `memory.py:124-130` | `POC.agent_memory` | `{user_key, active: False}`, sort `updated_at desc`, limit 20 | Histórico de fatos desativados (supersessão) — trilha auditável do que o agente "deixou de acreditar" |
 | `memory.py:343-347` (`extract_and_store`) | `POC.agent_memory` | `{_id: {$in: fact_ids}, user_key, active: True}` | Recarrega os documentos completos dos fatos candidatos a serem substituídos, antes da extração LLM decidir `replaces` |
 | `cache.py:194-196` (`recent`) | `POC.semantic_cache` | `{}`, sort `created_at desc`, limit | Painel "inspecionar cache" |
-| `guardrails.py:326-330` (`list_candidates`) | `POC.guardrail_candidates` | `{status}` opcional `{area}`, sort `at desc` | Fila de near-miss para revisão humana |
-| `guardrails.py:382` (`recent_events`) | `POC.guardrail_events` | `{area}` opcional, sort `at desc` | Audit log de guardrail (allow/block/mask) |
+| `policy_guardrails.py:521` (`list_candidates`) | `POC.guardrail_candidates` | `{status}` opcional `{area}`, sort `at desc` | Fila de near-miss para revisão humana |
+| `policy_guardrails.py:581` (`recent_events`) | `POC.guardrail_events` | `{area}` opcional, sort `at desc` | Audit log de guardrail (allow/block/mask) |
 | `guidance.py:42` | `POC.support_orders` | `{owner_user_key}` | Anexo de orientação: lista pedidos reais do usuário quando uma busca volta vazia (evita o modelo inventar número de pedido) |
 | `main.py:420` | `ai_brain.prompt_templates` | `{}` | Aba 1 — lista templates para a UI |
 | `main.py:912` | `POC.guardrail_denylist` | — | Lista frases do denylist pro painel |
@@ -219,7 +221,7 @@ Pós-processamento: `graph.py:summarize_order_chain` (linha 50-71) transforma a 
 
 ## 7. TTL indexes (expiração nativa, zero cron)
 
-Todos em `backend/seed.py:1076-1104`.
+Todos em `backend/seed.py` (~1264-1300).
 
 | Collection.campo | `expireAfterSeconds` | O que expira / por quê | ADR |
 |---|---|---|---|
@@ -247,7 +249,7 @@ Atômico: com o mês no teto, o filtro não casa, o upsert colide no `_id` (`Dup
 
 ## 8. Índices regulares (não-vetoriais)
 
-`backend/seed.py:1027-1060`:
+`backend/seed.py` (~1220-1250):
 
 | Collection | Índice | Por que |
 |---|---|---|

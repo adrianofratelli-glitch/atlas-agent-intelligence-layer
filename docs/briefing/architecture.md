@@ -1,5 +1,7 @@
 # Arquitetura — singleagent (Intelligence Layer PoV)
 
+> Números de linha podem ficar defasados após mudanças: a fonte atualizada é [MAPA_DO_CODIGO.md](../MAPA_DO_CODIGO.md).
+
 > Este briefing existe pra responder rápido "onde está X" quando o gestor pergunta. Se você quer a tese completa e o roteiro de apresentação, releia o `README.md` — ele tem mais autoridade e é mantido atualizado. Aqui vai o mapa técnico: stack, componentes, fluxo de dados por turno, e pra onde ir quando algo quebra.
 
 ## O que é
@@ -33,13 +35,18 @@ A aba 3 é o core do produto e o assunto deste documento (e de `agent-behavior.m
 | `graph.py` | Travessia da cadeia de trocas (`$graphLookup`) — ver `queries.md` |
 | `cache.py` | Cache semântico escopado por área, TTL, fallback exato |
 | `cache_invalidation.py` | Worker de change stream (lifespan) que invalida o cache por área quando a persona muda |
-| `guardrails.py` | Política por área, máscara de PII, denylist semântica, auditoria, fila de near-miss |
+| `policy_guardrails.py` | Política por área, máscara de PII, denylist semântica, auditoria, fila de near-miss |
 | `profiles.py` | Resolução usuário → área |
 | `db.py` | Conexão Atlas (pool), `safe_query` (erros operacionais → mensagem amigável) |
 | `main.py` | Superfície da API REST/SSE, propriedade do `session_id`, persistência do trace |
 | `llm.py` | Leitura de `ai_brain.model_config` a cada chamada |
 | `guidance.py` | Anexos de orientação quando busca volta vazia ou escrita é negada |
 | `seed.py` | Reset único e idempotente de `ai_brain` + `POC`: dados, denylist, índices (regulares, TTL, vetoriais, BM25) e runtime (sessões, checkpoints, memória, auditoria). Recusa `POC`/`ai_brain` sem `ALLOW_DEMO_DB_WRITE=1`; `--keep-runtime` preserva memória e auditoria |
+| `agent_graph.py` | Grafo LangGraph do agente (nós, checkpoints `MongoDBSaver` com TTL) |
+| `turn_classifier.py` | Classificador de turno pessoal (`$vectorSearch` em `turn_probes`), usado no cache |
+| `web_search.py` | Ferramenta de busca web com cache, cota mensal e auditoria de chamadas externas |
+| `resilience.py` | Resiliência (retry/breaker) nas chamadas externas |
+| `observability.py` | Observabilidade do agente (métricas/tracing fail-open) |
 | `calibrate_thresholds.py` | Mede thresholds de cache/guardrail contra probes rotulados — nunca escolhido à mão |
 
 ## Fluxo de dados por turno (aba Agente)
@@ -47,7 +54,7 @@ A aba 3 é o core do produto e o assunto deste documento (e de `agent-behavior.m
 Todo turno roda, nesta ordem, inteiramente como operações MongoDB:
 
 ```
-guardrail de entrada + máscara de PII (guardrails.check_input)
+guardrail de entrada + máscara de PII (policy_guardrails.check_input)
   → busca no cache semântico, escopada por área (cache.lookup)
     → HIT: resposta servida do MongoDB, ZERO chamada ao LLM
     → MISS:
@@ -55,7 +62,7 @@ guardrail de entrada + máscara de PII (guardrails.check_input)
       → extração de fato com gate (memory.should_extract → memory.extract_and_store) [concorrente]
       → histórico recente da sessão (POC.agent_sessions, janela hidratada)
       → loop de ferramentas MCP (agent._run_tool_loop) — find/aggregate/update-many
-      → guardrail de saída (guardrails.check_output) — redige PII
+      → guardrail de saída (policy_guardrails.check_output) — redige PII
       → escrita de curto prazo (agent._store_short_term → POC.agent_sessions)
       → insert/supersessão de longo prazo (memory.extract_and_store)
       → escrita no cache (só se resposta genérica, sem personalização por memória)

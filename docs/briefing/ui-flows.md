@@ -1,5 +1,7 @@
 # UI — telas, fluxos e componentes
 
+> Números de linha podem ficar defasados após mudanças: a fonte atualizada é [MAPA_DO_CODIGO.md](../MAPA_DO_CODIGO.md).
+
 > Front em `frontend/` (React 18 + Vite + LeafyGreen, JS puro, sem router/estado externo). `fetch` cru embrulhado em `frontend/src/api.js`. Proxy `/api` → backend `:8010`. Frontend sobe em `:5183`.
 
 ## Regra que governa toda a UI

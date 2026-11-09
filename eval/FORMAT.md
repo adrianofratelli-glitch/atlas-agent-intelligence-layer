@@ -1,6 +1,6 @@
 # Formato do eval do agente único (compatível com o do multiagente)
 
-Este arquivo é o par de `../multiagente-atendimento/eval/FORMAT.md`. O objetivo é medir a MESMA
+Este arquivo é o par de `../atlas-multi-agent-coordination/eval/FORMAT.md`. O objetivo é medir a MESMA
 coisa nas duas PoVs para comparar single vs multi com números, não com impressão. O que muda aqui
 está listado em **Diferenças** — nada de silencioso.
 

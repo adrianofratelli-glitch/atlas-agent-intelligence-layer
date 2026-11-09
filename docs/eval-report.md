@@ -1,7 +1,7 @@
 # Eval do agente único e comparativo single vs multi (22/09/2026)
 
 Formato, campos e métricas: [`eval/FORMAT.md`](../eval/FORMAT.md) — espelho do
-`../multiagente-atendimento/eval/FORMAT.md`, com as diferenças listadas lá (não há roteamento
+`../atlas-multi-agent-coordination/eval/FORMAT.md`, com as diferenças listadas lá (não há roteamento
 para medir num agente único; o análogo de "handoffs por turno" é "chamadas de ferramenta por
 turno"). Relatórios crus são gerados localmente em `eval/reports/` (não versionados).
 
@@ -46,7 +46,7 @@ campo sai como `nao_exercitado`, e o número não cobre esse caminho.
 
 ## Comparativo single vs multi
 
-Números do multiagente: `../multiagente-atendimento/eval/FORMAT.md` (rodada de 22/09/2026, 24
+Números do multiagente: `../atlas-multi-agent-coordination/eval/FORMAT.md` (rodada de 22/09/2026, 24
 casos, banco `multi_agent_poc_test`).
 
 | Métrica | **singleagent** (28 casos, `live`) | **multiagente** (24 casos, `live`) |

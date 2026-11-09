@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Boots the whole app: FastAPI (default 8010) in the background + Vite (default 5183) in the foreground.
 # Non-standard defaults on purpose: this workspace runs several PoVs side by side and
-# 8000/5173 are the common FastAPI/Vite defaults other PoVs (e.g. pix-open-finance) use.
+# 8000/5173 are the common FastAPI/Vite defaults other PoVs (e.g. pix-mongo-poc) use.
 # Override with BACKEND_PORT / PORT env vars if you need something else.
 set -e
 cd "$(dirname "$0")"

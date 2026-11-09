@@ -48,7 +48,7 @@ MAX_RESULT_CHARS = 2_500   # teto determinístico do texto que volta ao modelo
 DEFAULTS = {
     "enabled": False,
     "disabled_areas": [],
-    # A chave Tavily é UMA para o portfólio (1.000 créditos/mês): singleagent 500 + multiagente-atendimento 400.
+    # A chave Tavily é UMA para o portfólio (1.000 créditos/mês): singleagent 500 + atlas-multi-agent-coordination 400.
     "monthly_limit": 500,
     "max_results": 3,
     "cache_ttl_seconds": 6 * 3600,  # dado web envelhece: horas, não dias

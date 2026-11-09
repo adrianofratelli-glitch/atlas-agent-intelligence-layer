@@ -202,7 +202,7 @@ nenhuma escrita nos bancos da demo.
   sem `crypt_shared`).
 - `_shared` 0.3.0 na branch `feat/atlas-capabilities-2026-10` (`5bd5058`, `47f5c96`), CHANGELOG
   descreve a API nova (`atlas_retrieval`); suíte do `_shared` 272 verdes.
-- Suíte offline da Parte B (`multiagente-atendimento/backend`, `pytest -q`) contra o pov-shared
+- Suíte offline da Parte B (`atlas-multi-agent-coordination/backend`, `pytest -q`) contra o pov-shared
   0.3.0 instalado editável: 523 passed, 50 skipped.
 - Demo: nenhuma escrita desta sessão depois da correção do isolamento do caos (snapshot das 42
   coleções igual antes/depois em duas regressões). Antes da correção, a bateria LIVE completa

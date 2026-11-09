@@ -1,5 +1,7 @@
 # Intelligence layer in MongoDB
 
+Mapa do código: [docs/MAPA_DO_CODIGO.md](docs/MAPA_DO_CODIGO.md)
+
 Most AI applications keep their "intelligence" everywhere except the database: prompts hard-coded in the repository, the model name in an environment variable, a separate vector store, a cache in another service, and agent memory nowhere at all. Every adjustment becomes a deploy.
 
 This PoV moves that layer into the database. Prompt schemas, model configuration, semantic cache, guardrail policies, and the agent's short- and long-term memory are all documents: changed with one `update_one`, applied on the next request, no restart. One cluster, one query language, one security model, and every cache hit, memory fact, and guardrail decision is a queryable document instead of a black box.

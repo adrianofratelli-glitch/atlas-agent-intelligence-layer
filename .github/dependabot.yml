@@ -10,6 +10,10 @@ updates:
     groups:
       menores:
         update-types: [minor, patch]
+    # major quebra demo (ex.: langfuse>=3 quebra em silêncio; regra do workspace pina <3): decisão manual
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: "/"
     schedule:
@@ -19,6 +23,10 @@ updates:
     groups:
       menores:
         update-types: [minor, patch]
+    # major quebra demo (ex.: langfuse>=3 quebra em silêncio; regra do workspace pina <3): decisão manual
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: "/frontend"
     schedule:
@@ -28,6 +36,10 @@ updates:
     groups:
       menores:
         update-types: [minor, patch]
+    # major quebra demo (ex.: langfuse>=3 quebra em silêncio; regra do workspace pina <3): decisão manual
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

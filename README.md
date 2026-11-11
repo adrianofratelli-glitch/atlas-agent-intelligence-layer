@@ -119,7 +119,7 @@ npm install && npx playwright install chromium && npm run test:visual   # Playwr
 
 If 5183 is taken by another app, run the visual tests against the reserved fallback port: `cd frontend && npx vite preview --host 127.0.0.1 --port 5283 --strictPort`, then `BASE_URL=http://127.0.0.1:5283 npm run test:visual`.
 
-Docker: `docker build -t intelligence-layer-poc . && docker run --env-file .env -p 18082:8080 intelligence-layer-poc`.
+Docker: `docker build --build-context shared=../_shared -t intelligence-layer-poc . && docker run --env-file .env -p 18082:8080 intelligence-layer-poc` (the image bundles Node for the MCP Server and the `pov-shared` core; `.env` without quotes; health at `/api/health`).
 
 ## Production profile
 

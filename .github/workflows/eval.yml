@@ -1,0 +1,76 @@
+name: eval
+# Avalia a qualidade do agente contra os pisos de _shared/workspace/agendado/eval_pisos.json (segundas 12:40 BRT).
+# Gerado por _shared/workspace/ci/gerar_smoke_e_eval.py
+on:
+  schedule:
+    - cron: "40 15 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: atlas-agent-intelligence-layer
+      - uses: actions/checkout@v7
+        with:
+          repository: adrianofratelli-glitch/pov-shared
+          ssh-key: ${{ secrets.POV_SHARED_DEPLOY_KEY }}
+          path: _shared
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: .env a partir do secret (valores mascarados no log)
+        env:
+          POV_ENV: ${{ secrets.POV_ENV }}
+        run: |
+          if [ -z "$POV_ENV" ]; then echo "::error::secret POV_ENV ausente (rode ci/setup_secrets_nuvem.sh)"; exit 1; fi
+          python3 - <<'PY'
+          import os
+          out = []
+          for line in os.environ["POV_ENV"].splitlines():
+              s = line.strip()
+              if not s or s.startswith("#") or "=" not in s:
+                  continue
+              k, v = s.split("=", 1)
+              k = k.removeprefix("export ").strip(); v = v.strip()
+              if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+                  v = v[1:-1]
+              if len(v) >= 4:
+                  print(f"::add-mask::{v}")
+              out.append(f"{k}={v}")
+          open(os.environ["RUNNER_TEMP"] + "/pov.env", "w").write("\n".join(out) + "\n")
+          PY
+      - name: ambiente da PoV
+        working-directory: atlas-agent-intelligence-layer
+        run: |
+          cp "$RUNNER_TEMP/pov.env" .env
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install -q -r backend/requirements.txt
+          backend/.venv/bin/pip install -q -e "$GITHUB_WORKSPACE/_shared[llm,tracing]"
+      - name: eval singleagent
+        env:
+          POV_ROOT: ${{ github.workspace }}
+          POV_EVAL_LOGS: ${{ runner.temp }}/pov-eval
+        run: python3 _shared/workspace/agendado/eval_semanal.py --pov singleagent
+      - name: relatório
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-singleagent
+          path: ${{ runner.temp }}/pov-eval
+          retention-days: 30
+      # Repo público sem atividade por 60 dias tem o agendamento desligado pelo GitHub; reabilitar a cada
+      # execução mantém o agendamento vivo sem commits de ruído.
+      - name: mantém o agendamento vivo
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/eval.yml/enable" || true

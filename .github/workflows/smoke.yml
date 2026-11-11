@@ -1,0 +1,75 @@
+name: smoke
+# Sobe a PoV em Docker contra o Atlas real e confere health + tela (dias úteis 08:20 BRT).
+# Gerado por _shared/workspace/ci/gerar_smoke_e_eval.py
+on:
+  schedule:
+    - cron: "20 11 * * 1-5"
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: write
+concurrency:
+  group: smoke
+  cancel-in-progress: false
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: repo
+      - uses: actions/checkout@v7
+        with:
+          repository: adrianofratelli-glitch/pov-shared
+          ssh-key: ${{ secrets.POV_SHARED_DEPLOY_KEY }}
+          path: _shared
+      - name: .env a partir do secret (valores mascarados no log)
+        env:
+          POV_ENV: ${{ secrets.POV_ENV }}
+        run: |
+          if [ -z "$POV_ENV" ]; then echo "::error::secret POV_ENV ausente (rode ci/setup_secrets_nuvem.sh)"; exit 1; fi
+          python3 - <<'PY'
+          import os
+          out = []
+          for line in os.environ["POV_ENV"].splitlines():
+              s = line.strip()
+              if not s or s.startswith("#") or "=" not in s:
+                  continue
+              k, v = s.split("=", 1)
+              k = k.removeprefix("export ").strip(); v = v.strip()
+              if len(v) >= 2 and v[0] == v[-1] and v[0] in "'\"":
+                  v = v[1:-1]
+              if len(v) >= 4:
+                  print(f"::add-mask::{v}")
+              out.append(f"{k}={v}")
+          open(os.environ["RUNNER_TEMP"] + "/pov.env", "w").write("\n".join(out) + "\n")
+          PY
+      - name: build da imagem
+        run: docker build -t pov-smoke --build-context shared=_shared repo
+      - name: sobe o container
+        run: docker run -d --name pov -p 8080:8080 --env-file "$RUNNER_TEMP/pov.env" pov-smoke
+      - name: health contra o Atlas real
+        run: |
+          for _ in $(seq 1 60); do
+            if curl -fsS -o /dev/null "http://127.0.0.1:8080/api/health"; then echo "health ok"; exit 0; fi
+            sleep 3
+          done
+          echo "::error::health /api/health não respondeu em 3 min"
+          docker inspect --format '{{.State.Status}} {{.State.ExitCode}}' pov
+          exit 1
+      - name: tela
+        run: |
+          code=$(curl -s -o "$RUNNER_TEMP/index.html" -w "%{http_code}" http://127.0.0.1:8080/)
+          if [ "$code" = "200" ] && grep -qi "<div id=\"root\"\|<!doctype html" "$RUNNER_TEMP/index.html"; then
+            echo "tela ok"
+          else
+            echo "::error::tela respondeu $code sem o HTML do app"; exit 1
+          fi
+      # Repo público sem atividade por 60 dias tem o agendamento desligado pelo GitHub; reabilitar a cada
+      # execução mantém o agendamento vivo sem commits de ruído.
+      - name: mantém o agendamento vivo
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/smoke.yml/enable" || true

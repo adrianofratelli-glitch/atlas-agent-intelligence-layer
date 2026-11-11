@@ -4,7 +4,7 @@ uvicorn[standard]==0.34.*
 # Motor, que foi deprecado pela MongoDB
 pymongo>=4.18.3,<5
 anthropic[mcp]>=0.109
-mcp>=1.30,<2
+mcp>=2.3.0,<3
 python-dotenv==1.*
 # JWT demo-issuer (produção troca a emissão pelo IdP corporativo via JWKS)
 pyjwt>=2.15,<3

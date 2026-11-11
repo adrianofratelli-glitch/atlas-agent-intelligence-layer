@@ -3,7 +3,7 @@ uvicorn[standard]==0.34.*
 # PyMongo Async (AsyncMongoClient) — o driver assíncrono oficial; substitui o
 # Motor, que foi deprecado pela MongoDB
 pymongo>=4.18.3,<5
-anthropic[mcp]>=0.109
+anthropic[mcp]>=2.6.0
 mcp>=1.30,<2
 python-dotenv==1.*
 # JWT demo-issuer (produção troca a emissão pelo IdP corporativo via JWKS)

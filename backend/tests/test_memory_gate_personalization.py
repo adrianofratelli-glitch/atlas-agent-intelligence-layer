@@ -5,6 +5,7 @@ Pergunta genérica sem 1ª pessoa passa pelo classificador de turno; o resto usa
 """
 
 import asyncio
+import importlib.util
 import os
 import sys
 import unittest
@@ -46,10 +47,15 @@ class MemoryGateTests(unittest.TestCase):
         self.assertEqual({f["user_key"] for f in seed.SEED_MEMORY}, users)
         ids = [f["_id"] for f in seed.SEED_MEMORY]
         self.assertEqual(len(ids), len(set(ids)))
+        for f in seed.SEED_MEMORY:
+            self.assertFalse(agent_graph.memory.looks_like_instruction(f["fact"]), f["fact"])
+
+    @unittest.skipUnless(importlib.util.find_spec("guardrails"),
+                         "pov-shared ausente: mask_pii não está disponível")
+    def test_seeded_facts_survive_pii_mask_unchanged(self):
         import guardrails
         for f in seed.SEED_MEMORY:
             self.assertEqual(guardrails.mask_pii(f["fact"]).text, f["fact"])
-            self.assertFalse(agent_graph.memory.looks_like_instruction(f["fact"]), f["fact"])
 
 
 if __name__ == "__main__":

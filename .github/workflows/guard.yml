@@ -1,0 +1,39 @@
+name: guard
+# Mesmas travas dos git hooks locais (_shared/workspace/git-hooks), do lado do servidor:
+# segredo no histórico inteiro (gitleaks) e, nos commits novos deste push/PR, marca de ferramenta
+# de IA e e-mail de autor fora da lista permitida.
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks (histórico inteiro)
+        run: |
+          curl -sSfL -o gl.tgz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  gl.tgz" | sha256sum -c -
+          tar -xzf gl.tgz gitleaks
+          ./gitleaks git --no-banner --redact .
+      - name: marca de IA e e-mail nos commits novos
+        env:
+          BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          ALLOWED: "adriano.fratelli@mongodb.com adrianofratelli4@gmail.com 260260666+adrianofratelli-glitch@users.noreply.github.com noreply@github.com"
+        run: |
+          if [ -n "$BASE" ]; then range="$BASE..HEAD"
+          elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$BEFORE" 2>/dev/null; then range="$BEFORE..HEAD"
+          else range="HEAD~1..HEAD"; fi
+          echo "faixa: $range"
+          fail=0
+          if git log --format='%B' "$range" | grep -Ei '^(Co-Authored-By:.*(Claude|anthropic|Codex|OpenAI|Copilot)|Claude-Session:)|Generated with \[?Claude'; then
+            echo "::error::commit com marca de ferramenta de IA"; fail=1
+          fi
+          bad=$(git log --format='%h %ae %ce' "$range" | awk -v ok="$ALLOWED" 'BEGIN{n=split(ok,a," ");for(i=1;i<=n;i++)al[tolower(a[i])]=1} !(tolower($2) in al)||!(tolower($3) in al)')
+          if [ -n "$bad" ]; then echo "$bad"; echo "::error::e-mail de autor fora da lista permitida"; fail=1; fi
+          exit $fail

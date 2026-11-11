@@ -23,7 +23,7 @@ A aba 3 é o core do produto e o assunto deste documento (e de `agent-behavior.m
 - **Backend**: Python 3.12+, FastAPI (`backend/main.py`), driver `pymongo` Async (`AsyncMongoClient`, não Motor — deprecado). Dois databases no mesmo cluster Atlas: `ai_brain` (config viva, só humano escreve) e `POC` (dados de demo + telemetria).
 - **LLM**: Anthropic (Claude Sonnet 4.5 default, fallback configurável), acessado via um gateway HTTP interno (`backend/gateway.py`, `GatewayClient`) — não direto ao SDK.
 - **Ferramentas do agente**: MongoDB MCP Server (`npx mongodb-mcp-server@2.1.0`, pinado — ver `backend/agent.py:mcp_server_params`), o mesmo protocolo que uma IDE usaria, rodando via stdio.
-- **Observability**: Langfuse self-host, fail-open (`backend/tracing.py`) — a infra interna do Langfuse não é exposta em material de cliente (ver `../observability/README.md`).
+- **Observability**: Langfuse self-host, fail-open (`backend/langfuse_tracing.py`) — a infra interna do Langfuse não é exposta em material de cliente (ver `../observability/README.md`).
 - **Frontend**: React 18 + Vite + LeafyGreen (design system MongoDB), JavaScript puro (sem TS), sem router/estado externo. `fetch` cru embrulhado em `api.js`.
 
 ## Componentes (backend/)
@@ -98,6 +98,22 @@ Ver `docs/adr/`. Para o "porquê" de cada uma, leia o ADR; aqui só o resumo de 
 7. **Budgets de caractere são travas de segurança, não estimativa de billing** — a contagem real de token vem do usage do provedor.
 8. **Identidade vem do seletor de UI só nesta demo** — em produção seria claim JWT/OIDC.
 9. **Perfil de produção falha fechado** (`ENVIRONMENT=production` exige segredos fortes, `AUTH_REQUIRED=1`, CORS explícito).
+
+## Decisões de desenho
+
+Justificativas de implementação que não têm ADR próprio. O racional das decisões maiores está em `docs/adr/`.
+
+- **Versão do MCP Server pinada** (`MCP_SERVER_VERSION`, sobrescrevível por env): sem pin, a mesma PoV roda com pacotes diferentes em dev, demo e apresentação, com comportamento diferente e nenhum aviso. `backend/tests/test_mcp_contract.py` conecta ao binário pinado e falha se `ALLOWED_TOOLS` deixar de bater com `session.list_tools()`; o teste captura `list_tools()` antes do teardown e só trata como benigno o `anyio.BrokenResourceError` do encerramento do subprocesso.
+- **Cadeia de trocas resumida antes do modelo:** `agent.py:_summarize_chain_text` converte a saída do `$graphLookup` nos sinais `replacements`, `same_sku_count`, `recurring_defect`, `needs_quality_review`. Poupa contexto e evita o modelo somar elos errado; se o parse falhar, o texto original passa intacto (formato inesperado do MCP não derruba o turno). Com `needs_quality_review: true` o prompt (regra 4b) manda abrir chamado em vez de nova troca.
+- **Bancos por constante, não por literal:** `db.py` expõe `DB_MAIN`/`DB_BRAIN`/`DB_CATALOG` e a política de ferramentas deriva os alvos delas. Com literais, o app leria um banco e o MCP escreveria em outro quando os scripts trocam para os bancos `*_test`. O catálogo vetorial é só leitura e fica no banco da demo.
+- **CSOT acima do `maxTimeMS`:** o cliente declara `retryWrites`/`retryReads` (quem cobre troca de primário é o driver) e `timeoutMS` (padrão 15 s) cobrindo seleção de servidor, handshake e retries, acima do `maxTimeMS` de 10 s para que o erro específico da consulta vença primeiro. O worker de change stream usa cliente próprio sem CSOT (ADR-010).
+- **Pool de conexões explícito:** `maxPoolSize=50`, `minPoolSize=5`, `maxIdleTimeMS=30000` como número de referência para dimensionamento (tier de referência M10/M20), em vez dos defaults implícitos do driver.
+- **Chaves privadas do estado do grafo** (`_area_profile`, `_used_business_tools`) precisam estar declaradas em `agent_graph.TurnState`: o `StateGraph` descarta em silêncio chave de retorno que não é campo do schema, e o erro só aparece como `KeyError` no nó seguinte.
+- **Cache e transação:** `agent.mentions_order` marca como transacional qualquer turno cuja pergunta ou resposta cite um `PED-…`, mesmo sem ferramenta. Uma pergunta genérica recebia a lista de pedidos do cliente via `guidance.scope_reply` e era gravada no cache compartilhado da área (`docs/eval-report.md`, achado 2). Pergunta com `PED-…` também não lê o cache.
+- **Cache por capacidade:** toda entrada carrega o carimbo `web_enabled` (`cache._capability_ok`); resposta gerada sem busca web não é servida a turno que tem a ferramenta, senão ligar a ferramenta no registro não mudaria nada até o TTL. Resposta que cita a data de hoje (`agent.uses_current_date`) não vai para o cache.
+- **Aba 2, acerto imediato por texto normalizado** (`cache.lookup`, modo `exact-recent`): o autoEmbed leva de segundos a minutos para indexar a entrada nova. `no_cache` ("Comparar modelos") ignora o cache, senão repetir a pergunta após trocar o modelo devolveria a resposta do modelo anterior. O provider vem do catálogo, nunca do payload.
+- **Guardrail por intenção, não pela mensagem inteira:** o embedding da mensagem inteira é diluído por uma segunda intenção anexada e cai abaixo dos negativos legítimos, então baixar o limiar não resolve. A denylist pontua cada cláusula (`ascore_by_clause` do `pov-shared`); acima de `GUARDRAIL_MAX_CLAUSES` a mensagem é bloqueada, nunca reagrupada nem truncada (reagrupar diluía a intenção proibida). A heurística determinística de injeção roda antes e é complementar ao embedding.
+- **Capacidade medida** (`backend/scripts/load_test.py`, M10/M20, camada de dados do turno): 10 simultâneos p50 4,6 s / p95 12,9 s sem falha; 30 simultâneos p50 12 s / p95 30 s com `maxTimeMS` cortando. O turno faz quatro `$vectorSearch` com autoEmbed, e esse é o gargalo.
 
 ## Onde ir a partir daqui
 

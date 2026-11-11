@@ -8,6 +8,6 @@
     "test:e2e": "playwright test -c playwright.e2e.config.js"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0"
+    "@playwright/test": "^1.65.0"
   }
 }

@@ -1,4 +1,4 @@
-fastapi>=0.120,<0.140
+fastapi>=0.162.2,<0.163
 uvicorn[standard]==0.34.*
 # PyMongo Async (AsyncMongoClient) — o driver assíncrono oficial; substitui o
 # Motor, que foi deprecado pela MongoDB

@@ -3,10 +3,10 @@ version: 2
 updates:
   - package-ecosystem: pip
     directory: "/backend"
+    versioning-strategy: increase-if-necessary
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 3
     groups:
       menores:
         update-types: [minor, patch]
@@ -16,10 +16,10 @@ updates:
         update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: "/"
+    versioning-strategy: increase-if-necessary
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 3
     groups:
       menores:
         update-types: [minor, patch]
@@ -29,10 +29,10 @@ updates:
         update-types: ["version-update:semver-major"]
   - package-ecosystem: npm
     directory: "/frontend"
+    versioning-strategy: increase-if-necessary
     schedule:
-      interval: weekly
-      day: monday
-    open-pull-requests-limit: 5
+      interval: monthly
+    open-pull-requests-limit: 3
     groups:
       menores:
         update-types: [minor, patch]

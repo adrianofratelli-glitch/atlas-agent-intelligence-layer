@@ -45,6 +45,15 @@ jobs:
                   v = v[1:-1]
               if len(v) >= 4:
                   print(f"::add-mask::{v}")
+              # pedaços de URI também (erro de driver cita host de shard, usuário etc.): log de repo público é público
+              if "://" in v:
+                  from urllib.parse import urlsplit
+                  u = urlsplit(v)
+                  parts = [u.netloc, u.hostname or "", u.username or "", u.password or ""]
+                  for h in (u.hostname or "").split(","):
+                      parts += [h] + [lab for lab in h.split(".") if len(lab) >= 4 and lab not in ("mongodb", "azure", "https", "www")]
+                  for x in {x for x in parts if x and len(x) >= 4}:
+                      print(f"::add-mask::{x}")
               out.append(f"{k}={v}")
           open(os.environ["RUNNER_TEMP"] + "/pov.env", "w").write("\n".join(out) + "\n")
           PY
@@ -60,13 +69,6 @@ jobs:
           POV_ROOT: ${{ github.workspace }}
           POV_EVAL_LOGS: ${{ runner.temp }}/pov-eval
         run: python3 _shared/workspace/agendado/eval_semanal.py --pov singleagent
-      - name: relatório
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: eval-singleagent
-          path: ${{ runner.temp }}/pov-eval
-          retention-days: 30
       # Repo público sem atividade por 60 dias tem o agendamento desligado pelo GitHub; reabilitar a cada
       # execução mantém o agendamento vivo sem commits de ruído.
       - name: mantém o agendamento vivo

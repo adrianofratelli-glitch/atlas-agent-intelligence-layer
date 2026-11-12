@@ -42,6 +42,15 @@ jobs:
                   v = v[1:-1]
               if len(v) >= 4:
                   print(f"::add-mask::{v}")
+              # pedaços de URI também (erro de driver cita host de shard, usuário etc.): log de repo público é público
+              if "://" in v:
+                  from urllib.parse import urlsplit
+                  u = urlsplit(v)
+                  parts = [u.netloc, u.hostname or "", u.username or "", u.password or ""]
+                  for h in (u.hostname or "").split(","):
+                      parts += [h] + [lab for lab in h.split(".") if len(lab) >= 4 and lab not in ("mongodb", "azure", "https", "www")]
+                  for x in {x for x in parts if x and len(x) >= 4}:
+                      print(f"::add-mask::{x}")
               out.append(f"{k}={v}")
           open(os.environ["RUNNER_TEMP"] + "/pov.env", "w").write("\n".join(out) + "\n")
           PY

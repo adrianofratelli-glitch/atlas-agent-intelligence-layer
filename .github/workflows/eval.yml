@@ -94,7 +94,8 @@ jobs:
           if [ "${{ steps.atlas.outputs.skip }}" = "true" ]; then
             echo "::warning::Atlas pausado: só os checks offline"; python3 _shared/workspace/agendado/eval_semanal.py --pov singleagent --tiers offline
           else
-            python3 _shared/workspace/agendado/eval_semanal.py --pov singleagent
+            # tier llm fica no Mac (com.adriano.pov-eval): o gateway Grove recusa o GitHub (403)
+            python3 _shared/workspace/agendado/eval_semanal.py --pov singleagent --tiers offline,atlas
           fi
       # Repo público sem atividade por 60 dias tem o agendamento desligado pelo GitHub; reabilitar a cada
       # execução mantém o agendamento vivo sem commits de ruído.

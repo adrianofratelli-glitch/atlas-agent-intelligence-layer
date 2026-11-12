@@ -24,7 +24,7 @@ jobs:
         env:
           BEFORE: ${{ github.event.before }}
           BASE: ${{ github.event.pull_request.base.sha }}
-          ALLOWED: "adriano.fratelli@mongodb.com adrianofratelli4@gmail.com 260260666+adrianofratelli-glitch@users.noreply.github.com noreply@github.com"
+          ALLOWED: "adriano.fratelli@mongodb.com adrianofratelli4@gmail.com 260260666+adrianofratelli-glitch@users.noreply.github.com noreply@github.com 49699333+dependabot[bot]@users.noreply.github.com"
         run: |
           if [ -n "$BASE" ]; then range="$BASE..HEAD"
           elif [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] && git cat-file -e "$BEFORE" 2>/dev/null; then range="$BEFORE..HEAD"

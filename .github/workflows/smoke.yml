@@ -1,9 +1,9 @@
 name: smoke
-# Sobe a PoV em Docker contra o Atlas real e confere health + tela (dias úteis 08:20 BRT).
+# Sobe a PoV em Docker contra o Atlas real e confere health + tela (dias úteis 10:07 BRT).
 # Gerado por _shared/workspace/ci/gerar_smoke_e_eval.py
 on:
   schedule:
-    - cron: "20 11 * * 1-5"
+    - cron: "7 13 * * 1-5"
   workflow_dispatch:
 permissions:
   contents: read

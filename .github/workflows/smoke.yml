@@ -91,7 +91,7 @@ jobs:
             fi
             sleep 3
           done
-          echo "::error::health /api/health não respondeu em 3 min"
+          echo "::error::health /api/health não ficou ok em 3 min"
           docker inspect --format '{{.State.Status}} {{.State.ExitCode}}' pov
           exit 1
       - name: tela

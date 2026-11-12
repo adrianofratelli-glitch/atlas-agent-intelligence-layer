@@ -54,20 +54,48 @@ jobs:
               out.append(f"{k}={v}")
           open(os.environ["RUNNER_TEMP"] + "/pov.env", "w").write("\n".join(out) + "\n")
           PY
+      - name: Atlas acessível?
+        id: atlas
+        run: |
+          pip install -q pymongo dnspython >/dev/null 2>&1
+          python3 - <<'PY'
+          import os
+          env = dict(l.split("=", 1) for l in open(os.environ["RUNNER_TEMP"] + "/pov.env").read().splitlines() if "=" in l)
+          uri = env.get("MONGODB_URI") or env.get("MONGO_URI") or env.get("MONGODB_URL") or ""
+          out = open(os.environ["GITHUB_OUTPUT"], "a")
+          if not uri:
+              print("sem URI do Atlas no .env: segue sem a checagem"); out.write("skip=false\n"); raise SystemExit(0)
+          import pymongo
+          from pymongo.errors import ServerSelectionTimeoutError
+          try:
+              pymongo.MongoClient(uri, serverSelectionTimeoutMS=12000).admin.command("ping")
+              print("Atlas ok"); out.write("skip=false\n")
+          except ServerSelectionTimeoutError:
+              # cluster pausado ou fora do ar: não é defeito da PoV; aviso em vez de falha (sem e-mail diário)
+              print("::warning::Atlas inacessível (cluster pausado?): verificação pulada"); out.write("skip=true\n")
+          except Exception as e:  # credencial errada etc.: falha de verdade
+              print(f"::error::Atlas recusou a conexão: {type(e).__name__}"); raise SystemExit(1)
+          PY
       - name: build da imagem
+        if: steps.atlas.outputs.skip != 'true'
         run: docker build -t pov-smoke --build-context shared=_shared repo
       - name: sobe o container
+        if: steps.atlas.outputs.skip != 'true'
         run: docker run -d --name pov -p 8080:8080 --env-file "$RUNNER_TEMP/pov.env" pov-smoke
       - name: health contra o Atlas real
+        if: steps.atlas.outputs.skip != 'true'
         run: |
           for _ in $(seq 1 60); do
-            if curl -fsS -o /dev/null "http://127.0.0.1:8080/api/health"; then echo "health ok"; exit 0; fi
+            if curl -fsS -o /dev/null "http://127.0.0.1:8080/api/health"; then
+              echo "health ok"; exit 0
+            fi
             sleep 3
           done
           echo "::error::health /api/health não respondeu em 3 min"
           docker inspect --format '{{.State.Status}} {{.State.ExitCode}}' pov
           exit 1
       - name: tela
+        if: steps.atlas.outputs.skip != 'true'
         run: |
           code=$(curl -s -o "$RUNNER_TEMP/index.html" -w "%{http_code}" http://127.0.0.1:8080/)
           if [ "$code" = "200" ] && grep -qi "<div id=\"root\"\|<!doctype html" "$RUNNER_TEMP/index.html"; then

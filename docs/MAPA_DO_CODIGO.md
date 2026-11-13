@@ -19,6 +19,8 @@ backend/                      API FastAPI + o agente (Python)
   memory_backends.py          Adaptadores Atlas x Mem0 (só para o benchmark de memória)
   graph.py                    Pipeline $graphLookup da cadeia de trocas de pedido
   turn_classifier.py          Decide se o turno é "pessoal" (usa memória/não entra no cache) via $vectorSearch em turn_probes
+  search_readiness.py         list_search_indexes: busca vazia só vale com índice consultável (ADR-013)
+  answer_checks.py            Fidelidade da resposta: ação afirmada sem escrita, prazo sem fonte (não bloqueia)
   web_search.py               Ferramenta externa web_search (Tavily): cota, cache e auditoria no Atlas
   guidance.py                 Textos de orientação quando a busca volta vazia, escrita é negada ou o assunto é fora de escopo
   profiles.py                 Usuário -> área; perfis de área (persona) em ai_brain.area_profiles
@@ -56,7 +58,7 @@ Dockerfile, docker/, nginx.conf   Empacotamento
 docs/                         adr/ (decisões), briefing/, eval-report.md, chaos-report.md, memoria-agentica-mongodb.md
 ```
 
-Observação: o MCP Server do MongoDB (`mongodb-mcp-server`, versão fixada em `backend/agent.py:936`) não está neste repositório. É lançado via `npx` por `agent.py::mcp_server_params` (linha 939) e é por ele que o agente consulta os pedidos.
+Observação: o MCP Server do MongoDB (`mongodb-mcp-server`, versão fixada em `backend/agent.py:942`) não está neste repositório. É lançado via `npx` por `agent.py::mcp_server_params` (linha 945) e é por ele que o agente consulta os pedidos.
 
 ## 2. "Apertei o botão X, o que roda?"
 
@@ -72,34 +74,34 @@ Todas as chamadas passam por `frontend/src/api.js` (objeto `api`, linha 79). A i
 | Aba 2: lista de modelos | `ModelSwap.jsx:69` | `GET /api/models` | `main.py:634` `available_models` | `gateway.model_catalog()` | nenhum |
 | Aba 2: "Perguntar" | `ModelSwap.jsx:87` `ask` | `POST /api/chat/quick` | `main.py:707` `quick_chat` | guardrail -> `cache.lookup` -> `llm.call_with_fallback` -> `cache.store` | ver `cache.py::lookup`, `llm.py::get_active_config`, `cache.py::store` (seção 3) |
 | Aba 3: escolher usuário | `Agent.jsx:435` `switchUser` | `POST /api/auth/token`, `GET /api/agent/scenarios` | `main.py:827` `auth_token`, `main.py:853` `agent_scenarios` | `auth.issue_token`; chips por área em `agent.py:654` `AREA_SCENARIOS` | `profiles.py::get_user` (`app_users`) |
-| Aba 3: lista de usuários / ferramentas / roteiro | `Agent.jsx:179-181` | `GET /api/users`, `/api/agent/tools`, `/api/agent/playlist` | `main.py:845`, `main.py:878`, `main.py:872` | `profiles.list_users`, `agent.list_agent_tools` (`agent.py:949`), `DEMO_PLAYLIST` (`agent.py:884`) | `app_users`, `area_profiles`, `tool_registry` |
-| Aba 3: chip de pergunta, caixa de texto + enviar, "Consolidar" | `Agent.jsx:727` / `Agent.jsx:405` `send` -> `Agent.jsx:345` `runScenario` | `POST /api/agent/run/stream` (SSE; `api.js:agentRunStream`) | `main.py:999` `agent_run_stream` -> `run_agent_resilient` (`main.py:168`) | `agent.py:1454` `run_agent` -> `agent_graph.py:686` `run_turn` (detalhe abaixo) | vários, ver abaixo |
+| Aba 3: lista de usuários / ferramentas / roteiro | `Agent.jsx:179-181` | `GET /api/users`, `/api/agent/tools`, `/api/agent/playlist` | `main.py:845`, `main.py:878`, `main.py:872` | `profiles.list_users`, `agent.list_agent_tools` (`agent.py:955`), `DEMO_PLAYLIST` (`agent.py:884`) | `app_users`, `area_profiles`, `tool_registry` |
+| Aba 3: chip de pergunta, caixa de texto + enviar, "Consolidar" | `Agent.jsx:727` / `Agent.jsx:405` `send` -> `Agent.jsx:345` `runScenario` | `POST /api/agent/run/stream` (SSE; `api.js:agentRunStream`) | `main.py:999` `agent_run_stream` -> `run_agent_resilient` (`main.py:168`) | `agent.py:1469` `run_agent` -> `agent_graph.py:686` `run_turn` (detalhe abaixo) | vários, ver abaixo |
 | Aba 3: "Demo automática", pausar, continuar, encerrar | `Agent.jsx:312`, `321`, `329`, `336` | mesma `/api/agent/run/stream`, um turno por passo de `DEMO_PLAYLIST` | idem | idem | idem |
 | Aba 3: "Nova conversa" | `Agent.jsx:422` | nenhuma (novo `conversation_id` no navegador) | n/a | n/a | n/a |
 | Aba 3: Reset / Anterior / Próximo / play (replay do trace) | `Agent.jsx:412`, `449`, `508-522` | nenhuma | n/a | só reexibe o trace já recebido | nenhum |
-| Aba 3: inspetor, abas cache / curto prazo / memória / regras / eventos | `Agent.jsx:843` `MongoInspector` (`load` linha 849) | `GET /api/cache`, `/api/memory-short/{id}`, `/api/memory/{user}`, `/api/guardrails/rules`, `/api/guardrails/events` | `main.py:1077`, `1102`, `1094`, `1139`, `1180` | `cache.recent` (`cache.py:230`), `memory.load_longterm` (`memory.py:278`), `guardrails.get_policy` (`policy_guardrails.py:111`), `guardrails.recent_events` (`policy_guardrails.py:581`) | `semantic_cache`, `agent_sessions` (`main.py:1107`), `agent_memory`, `guardrail_denylist` (`main.py:1144`), `guardrail_events` |
-| Aba 3: "Limpar cache" | `Agent.jsx:869` | `DELETE /api/cache` | `main.py:1086` `cache_clear` | `cache.clear` (`cache.py:242`) | `semantic_cache` `delete_many({})` |
-| Aba 3: "Esquecer cliente" | `Agent.jsx:870` | `DELETE /api/memory/{user_key}` | `main.py:1123` `memory_clear` | direto no handler | `agent_memory` `delete_many({user_key})` (`main.py:1128`) |
-| Fila de near-miss (sem botão na UI; só API) | `api.js` não expõe; uso por curl | `GET /api/guardrails/candidates`, `POST /api/guardrails/candidates/{id}/review` | `main.py:1191`, `main.py:1203` | `policy_guardrails.py::list_candidates` (521), `review_candidate` (543) | `guardrail_candidates` `find`/`update_one`; aprovado entra em `guardrail_denylist` `insert_one` (`policy_guardrails.py:570`) |
+| Aba 3: inspetor, abas cache / curto prazo / memória / regras / eventos | `Agent.jsx:851` `MongoInspector` (`load` linha 857) | `GET /api/cache`, `/api/memory-short/{id}`, `/api/memory/{user}`, `/api/guardrails/rules`, `/api/guardrails/events` | `main.py:1077`, `1102`, `1094`, `1139`, `1180` | `cache.recent` (`cache.py:238`), `memory.load_longterm` (`memory.py:279`), `guardrails.get_policy` (`policy_guardrails.py:112`), `guardrails.recent_events` (`policy_guardrails.py:602`) | `semantic_cache`, `agent_sessions` (`main.py:1107`), `agent_memory`, `guardrail_denylist` (`main.py:1144`), `guardrail_events` |
+| Aba 3: "Limpar cache" | `Agent.jsx:877` | `DELETE /api/cache` | `main.py:1086` `cache_clear` | `cache.clear` (`cache.py:250`) | `semantic_cache` `delete_many({})` |
+| Aba 3: "Esquecer cliente" | `Agent.jsx:878` | `DELETE /api/memory/{user_key}` | `main.py:1123` `memory_clear` | direto no handler | `agent_memory` `delete_many({user_key})` (`main.py:1128`) |
+| Fila de near-miss (sem botão na UI; só API) | `api.js` não expõe; uso por curl | `GET /api/guardrails/candidates`, `POST /api/guardrails/candidates/{id}/review` | `main.py:1191`, `main.py:1203` | `policy_guardrails.py::list_candidates` (542), `review_candidate` (564) | `guardrail_candidates` `find`/`update_one`; aprovado entra em `guardrail_denylist` `insert_one` (`policy_guardrails.py:591`) |
 | Métricas (contador de tokens economizados) | `Agent.jsx:194`, `ModelSwap.jsx:49` | `GET /api/metrics` | `main.py:478` | `observability` | nenhum |
 
 ### O que roda dentro de um turno do agente (aba 3)
 
-O turno é o grafo de `backend/agent_graph.py` (montado em `_build_graph`, linha 640). Cada nó e o que faz:
+O turno é o grafo de `backend/agent_graph.py` (montado em `_build_graph`, linha 658). Cada nó e o que faz:
 
 | Nó (linha) | O que faz | Onde toca o MongoDB |
 |---|---|---|
-| `n_identity` (133) | Resolve usuário e área, carrega config de web_search | `profiles.get_user`, `web_search.get_config` (`ai_brain.tool_registry`) |
-| `n_guard_input` (155) | `guardrails.check_input` (policy_guardrails.py:364): heurística de injeção, máscara de PII, termos banidos, denylist semântico | `$vectorSearch` em `guardrail_denylist` (`policy_guardrails.py::_denylist_top`); grava `guardrail_events` / `guardrail_candidates` |
-| `n_resume_check` (170) | Decide se bloqueia, trata fora de escopo ou segue | nenhum |
-| `n_blocked` (203) / `n_scope` (221) | Respostas de bloqueio e de fora de escopo (`guidance.scope_reply`) | `support_orders` `find` por dono (`guidance.py:42`) |
-| `n_cache_lookup` (245) | Classifica o turno (`turn_classifier.classify`) e consulta o cache semântico (`cache.lookup`) | `$vectorSearch` em `turn_probes` e em `semantic_cache` |
-| `n_cache_finish` (305) | Se houve HIT, devolve a resposta sem LLM | `update_one` de contador de hits em `semantic_cache` (`cache.py:170`) |
-| `n_run_pipeline` (377) | Memória longa + extração de fato (em paralelo), histórico, loop de ferramentas MCP, guardrail de saída, escrita no curto prazo | ver tabela da seção 3 (memória, `agent_sessions`) e o MCP abaixo |
-| `n_cache_store` (555) | Grava a resposta no cache só se for genérica | `semantic_cache` `insert_one` (`cache.py:226`) |
-| `n_finalize` (609) | Recarrega a memória para o trace e fecha o turno | `agent_memory` `find` (`memory.load_longterm`) |
+| `n_identity` (134) | Resolve usuário e área, carrega config de web_search | `profiles.get_user`, `web_search.get_config` (`ai_brain.tool_registry`) |
+| `n_guard_input` (156) | `guardrails.check_input` (policy_guardrails.py:372): heurística de injeção, máscara de PII, termos banidos, denylist semântico | `$vectorSearch` em `guardrail_denylist` (`policy_guardrails.py::_denylist_top`); grava `guardrail_events` / `guardrail_candidates` |
+| `n_resume_check` (171) | Decide se bloqueia, trata fora de escopo ou segue | nenhum |
+| `n_blocked` (204) / `n_scope` (222) | Respostas de bloqueio e de fora de escopo (`guidance.scope_reply`) | `support_orders` `find` por dono (`guidance.py:42`) |
+| `n_cache_lookup` (246) | Classifica o turno (`turn_classifier.classify`) e consulta o cache semântico (`cache.lookup`) | `$vectorSearch` em `turn_probes` e em `semantic_cache` |
+| `n_cache_finish` (306) | Se houve HIT, devolve a resposta sem LLM | `update_one` de contador de hits em `semantic_cache` (`cache.py:170`) |
+| `n_run_pipeline` (378) | Memória longa + extração de fato (em paralelo), histórico, loop de ferramentas MCP, guardrail de saída, escrita no curto prazo | ver tabela da seção 3 (memória, `agent_sessions`) e o MCP abaixo |
+| `n_cache_store` (573) | Grava a resposta no cache só se for genérica | `semantic_cache` `insert_one` (`cache.py:234`) |
+| `n_finalize` (627) | Recarrega a memória para o trace e fecha o turno | `agent_memory` `find` (`memory.load_longterm`) |
 
-O loop de ferramentas é `agent.py::_run_tool_loop` (linha 1080). O modelo só enxerga `find`, `aggregate` e `update-many` (allowlist em `agent.py:147-151`). Antes de cada chamada, `_read_denial` (448) e `_write_denial` (390) negam ou **reescrevem** o que o modelo pediu; depois a chamada vai ao MCP por `session.call_tool` (`agent.py:1226`) e a consulta contra `support_orders` / `produtos_vector` é executada pelo MCP Server, não pelo código Python da PoV. A cadeia de trocas usa o pipeline fixo de `graph.py:20` (`$graphLookup`), injetado em `agent.py:498`. A ferramenta externa `web_search` (`agent.py:1200`) roda `web_search.run` (`web_search.py:180`).
+O loop de ferramentas é `agent.py::_run_tool_loop` (linha 1086). O modelo só enxerga `find`, `aggregate` e `update-many` (allowlist em `agent.py:147-151`). Antes de cada chamada, `_read_denial` (448) e `_write_denial` (390) negam ou **reescrevem** o que o modelo pediu; depois a chamada vai ao MCP por `session.call_tool` (`agent.py:1237`) e a consulta contra `support_orders` / `produtos_vector` é executada pelo MCP Server, não pelo código Python da PoV. A cadeia de trocas usa o pipeline fixo de `graph.py:20` (`$graphLookup`), injetado em `agent.py:498`. A ferramenta externa `web_search` (`agent.py:1211`) roda `web_search.run` (`web_search.py:180`).
 
 ## 3. Onde estão as queries MongoDB
 
@@ -115,13 +117,13 @@ Correção ao briefing: lá, a seção 3.2 cita `backend/guardrails.py`. Esse ar
 | Cache: gravar / listar / limpar | `cache.py::store` (203, `insert_one` 226), `recent` (230), `clear` (242) | `insert_one`, `find`, `delete_many` | `semantic_cache` |
 | Invalidação por change stream | `cache_invalidation.py::_open_stream` (194), `pipeline` (69) | `watch` na coleção de perfis, apaga o cache da área (`delete_many` 121/125) | `ai_brain.area_profiles` (vigia), `semantic_cache`, `change_stream_tokens`, `cache_invalidations` |
 | Reconciliação do cache ao subir | `cache_invalidation.py::reconcile` (150) | `delete_many`, `find`, `delete_one` | `semantic_cache`, `area_profiles` |
-| Denylist semântico | `policy_guardrails.py::_denylist_top` (192) | `$vectorSearch` índice `guardrail_denylist_vs` via `tenant_vector_stage` | `guardrail_denylist` |
-| Política por área | `policy_guardrails.py::get_policy` (111) | `find_one` | `ai_brain.guardrail_policies` |
-| Auditoria do guardrail | `policy_guardrails.py::_log` (480, `insert_one` 484) e `recent_events` (581) | `insert_one`, `find` | `guardrail_events` |
-| Fila de near-miss | `policy_guardrails.py::_log_candidate` (497), `list_candidates` (521), `review_candidate` (543) | `insert_one`, `find`, `update_one`, promoção por `insert_one` | `guardrail_candidates`, `guardrail_denylist` |
-| Classificador de turno pessoal | `turn_classifier.py::classify` (95) | `$vectorSearch` em `turn_probes` | `ai_brain.turn_probes`; config em `ai_brain.turn_classifier_config` (88) |
+| Denylist semântico | `policy_guardrails.py::_denylist_top` (193) | `$vectorSearch` índice `guardrail_denylist_vs` via `tenant_vector_stage` | `guardrail_denylist` |
+| Política por área | `policy_guardrails.py::get_policy` (112) | `find_one` | `ai_brain.guardrail_policies` |
+| Auditoria do guardrail | `policy_guardrails.py::_log` (501, `insert_one` 505) e `recent_events` (602) | `insert_one`, `find` | `guardrail_events` |
+| Fila de near-miss | `policy_guardrails.py::_log_candidate` (518), `list_candidates` (542), `review_candidate` (564) | `insert_one`, `find`, `update_one`, promoção por `insert_one` | `guardrail_candidates`, `guardrail_denylist` |
+| Classificador de turno pessoal | `turn_classifier.py::classify` (96) | `$vectorSearch` em `turn_probes` | `ai_brain.turn_probes`; config em `ai_brain.turn_classifier_config` (89) |
 | Memória: retrieval híbrido (servidor) | `memory.py::rank_fusion_pipeline` (417), `_fused_server` (490) | `$rankFusion` com `$vectorSearch` (`_vector_leg` 365) + `$search` BM25 (`_bm25_leg` 374), `$rerank` opcional | `agent_memory` |
-| Memória: fusão no app (fallback) | `memory.py::_fused_app` (497), `_vector_candidates` (401), `_bm25_candidates` (409) | duas agregações e RRF em Python | `agent_memory` |
+| Memória: fusão no app (fallback) | `memory.py::_fused_app` (498), `_vector_candidates` (402), `_bm25_candidates` (410) | duas agregações e RRF em Python | `agent_memory` |
 | Memória: config de retrieval | `memory.py::_retrieval_config_doc` (356) | `find_one` | `ai_brain.memory_retrieval_config` |
 | Memória: ler fatos ativos/históricos | `memory.py::_active_docs` (268), `load_longterm` (278) | `find` por `user_key`, `active` | `agent_memory` |
 | Memória: orçamento do cliente | `memory.py::active_budget` (213) | `find_one` | `agent_memory` |
@@ -149,7 +151,7 @@ Nota: `seed.py` define os índices `semantic_cache_vs`, `guardrail_denylist_vs`,
 
 | Módulo | Para que serve aqui | Import exato |
 |---|---|---|
-| `guardrails` | pontuação do denylist por cláusula, heurística de injeção determinística | `from guardrails import ascore_by_clause` (`policy_guardrails.py:141`), `ClauseBudgetExceeded, ScoreError` (153), `import guardrails as shared` (63; também `memory.py:128`) |
+| `guardrails` | pontuação do denylist por cláusula, heurística de injeção determinística | `from guardrails import ascore_by_clause` (`policy_guardrails.py:142`), `ClauseBudgetExceeded, ScoreError` (154), `import guardrails as shared` (64; também `memory.py:129`) |
 | `atlas_retrieval` | `CapabilityCache` e a fusão híbrida da memória; `ChangeStreamWorker` do cache | `import atlas_retrieval as _ar` (`memory.py:321`, `cache_invalidation.py:38`) |
 | `tracing` | tracing distribuído com PII mascarada | `from tracing import init_tracing` (`observability.py:131`) |
 
@@ -169,8 +171,8 @@ Nota: `seed.py` define os índices `semantic_cache_vs`, `guardrail_denylist_vs`,
 ## 5. "Quero mexer em..." (atalhos)
 
 - Texto/visual de uma aba -> `frontend/src/tabs/FlexibleSchema.jsx`, `ModelSwap.jsx` ou `Agent.jsx`.
-- Perguntas sugeridas (chips) -> `AREA_SCENARIOS` em `backend/agent.py:654`.
-- Roteiro da demo automática -> `DEMO_PLAYLIST` em `backend/agent.py:884`.
+- Perguntas sugeridas (chips) -> `AREA_SCENARIOS` em `backend/agent.py:660`.
+- Roteiro da demo automática -> `DEMO_PLAYLIST` em `backend/agent.py:890`.
 - Prompt do agente (instruções de sistema) -> `_SYSTEM_TEMPLATE` em `backend/agent.py` (renderizado por `_render_system`, 638, em `SYSTEM`, 649). Os `prompt_templates` do Mongo (`seed.py:33`) alimentam a aba 1 e o chat da aba 2.
 - Persona/política por área -> `AREA_PROFILES` (`seed.py:472`) e `GUARDRAIL_POLICY` (`seed.py:555`), depois rodar o seed.
 - Frases proibidas do guardrail -> `GUARDRAIL_DENYLIST` em `backend/seed.py:619`.
@@ -196,6 +198,8 @@ Backend (unittest, sem servidor): `cd backend && .venv/bin/python -m unittest di
 | `test_cache_invalidation.py` | Worker de change stream |
 | `test_guardrail_dilution_adversarial.py`, `test_hardening_adversarial.py` | Casos adversariais do guardrail e do endurecimento |
 | `test_turn_classifier.py`, `test_calibration.py` | Classificador de turno e calibração |
+| `test_search_readiness.py` | Vazio de busca com índice ausente/em construção: denylist, cache, memória, caos `index_empty` (ADR-013) |
+| `test_answer_checks.py` | `answer_checks` e as reprovações por conteúdo do eval |
 | `test_web_search.py` | Ferramenta web_search (cota, cache) |
 | `test_seed_indexes.py`, `test_qe_profile.py` | Índices do seed e Queryable Encryption |
 | `test_chaos.py`, `test_chaos_isolation.py`, `test_gateway.py`, `test_observability.py` | Resiliência, gateway, métricas |

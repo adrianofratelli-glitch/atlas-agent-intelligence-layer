@@ -84,6 +84,7 @@ Ver `docs/adr/`. Para o "porquê" de cada uma, leia o ADR; aqui só o resumo de 
 - **ADR-010 — Invalidação do cache semântico por Change Stream** de `ai_brain.area_profiles` (`backend/cache_invalidation.py`).
 - **ADR-011 — Queryable Encryption** para PII do perfil, standalone (`backend/scripts/qe_sensitive_profile.py`).
 - **ADR-012 — Por que não o `MongoDBStore` do LangGraph** na memória longa.
+- **ADR-013 — Busca vazia exige índice consultável**: `$vectorSearch`/`$search` em índice ausente ou em construção devolve `[]` sem erro; `backend/search_readiness.py` confere `list_search_indexes` (queryable/READY) antes de aceitar o vazio. Denylist e classificador falham fechado, memória troca de perna com o nome verdadeiro, cache marca `unavailable`.
 - **ADR-007 — Ferramenta externa de busca web, governada por documento**: `web_search` (Tavily) fora do MCP, ligada por área em `ai_brain.tool_registry`, taint que tira a escrita do resto do turno, cota/cache/auditoria no Atlas, relógio no prompt e `date_diff` para contagem de dias.
 
 ## Invariantes de arquitetura (não relaxar sem atualizar esta página)
@@ -98,6 +99,7 @@ Ver `docs/adr/`. Para o "porquê" de cada uma, leia o ADR; aqui só o resumo de 
 7. **Budgets de caractere são travas de segurança, não estimativa de billing** — a contagem real de token vem do usage do provedor.
 8. **Identidade vem do seletor de UI só nesta demo** — em produção seria claim JWT/OIDC.
 9. **Perfil de produção falha fechado** (`ENVIRONMENT=production` exige segredos fortes, `AUTH_REQUIRED=1`, CORS explícito).
+11. **Vazio de busca não é resposta** sem índice consultável (ADR-013): toda camada que decide por "nada parecido" passa por `search_readiness`.
 
 ## Decisões de desenho
 
@@ -113,6 +115,7 @@ Justificativas de implementação que não têm ADR próprio. O racional das dec
 - **Cache por capacidade:** toda entrada carrega o carimbo `web_enabled` (`cache._capability_ok`); resposta gerada sem busca web não é servida a turno que tem a ferramenta, senão ligar a ferramenta no registro não mudaria nada até o TTL. Resposta que cita a data de hoje (`agent.uses_current_date`) não vai para o cache.
 - **Aba 2, acerto imediato por texto normalizado** (`cache.lookup`, modo `exact-recent`): o autoEmbed leva de segundos a minutos para indexar a entrada nova. `no_cache` ("Comparar modelos") ignora o cache, senão repetir a pergunta após trocar o modelo devolveria a resposta do modelo anterior. O provider vem do catálogo, nunca do payload.
 - **Guardrail por intenção, não pela mensagem inteira:** o embedding da mensagem inteira é diluído por uma segunda intenção anexada e cai abaixo dos negativos legítimos, então baixar o limiar não resolve. A denylist pontua cada cláusula (`ascore_by_clause` do `pov-shared`); acima de `GUARDRAIL_MAX_CLAUSES` a mensagem é bloqueada, nunca reagrupada nem truncada (reagrupar diluía a intenção proibida). A heurística determinística de injeção roda antes e é complementar ao embedding.
+- **Fidelidade da resposta, sem bloqueio** (`backend/answer_checks.py`, desde 2026-11-12): depois do guardrail de saída, `agent_graph.n_run_pipeline` confere a resposta contra o turno. `promessa_sem_escrita` = ação de pedido afirmada em 1ª pessoa ("vou abrir um chamado", "registrei a troca") sem `update-many` bem-sucedido (`metrics.order_writes_ok`); `prazo_sem_fonte` = prazo prometido ("em até 24 horas") cujo número e unidade não aparecem no prompt da área, no contexto, no histórico nem nos resultados de ferramenta. Vira evento `guardrail`/`flag` no trace, `guardrail.output.answer_checks`, registro em `guardrail_events` (texto mascarado) e o contador `answer_flags` em `/api/metrics`. Não bloqueia: é heurística de frase e a resposta já saiu do modelo; a prevenção é a regra 4a do prompt.
 - **Capacidade medida** (`backend/scripts/load_test.py`, M10/M20, camada de dados do turno): 10 simultâneos p50 4,6 s / p95 12,9 s sem falha; 30 simultâneos p50 12 s / p95 30 s com `maxTimeMS` cortando. O turno faz quatro `$vectorSearch` com autoEmbed, e esse é o gargalo.
 
 ## Onde ir a partir daqui

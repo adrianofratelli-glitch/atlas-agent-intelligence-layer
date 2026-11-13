@@ -143,7 +143,7 @@ async def score_live(case: dict, session) -> dict:
             "order_writes_ok": int(metrics.get("order_writes_ok", 0)),
             # para o juiz: a pergunta, o que as ferramentas devolveram e a resposta
             "_judge_input": {"message": case["message"], "answer": answer,
-                             "evidence": tool_evidence(result)}}
+                             "evidence": await judge_context(case, result, metrics)}}
 
 
 def answer_failures(case: dict, answer: str, metrics: dict, result: dict) -> list[str]:
@@ -171,6 +171,51 @@ def answer_failures(case: dict, answer: str, metrics: dict, result: dict) -> lis
     return out
 
 
+async def judge_context(case: dict, result: dict, metrics: dict, limit: int = 4000) -> str:
+    """O que é VERDADE no turno, montado pelo eval (não pelo agente) para o juiz.
+
+    O trace não guarda resultado de ferramenta (protegido), e o juiz da primeira rodada
+    (2026-11-12) reprovou 16/28 por "sem evidência" de fatos que estavam no banco ou nas
+    regras da área. Aqui entram: regras da área (`area_profiles.persona`), FAQ servida do
+    cache, os pedidos citados na mensagem (projeção sem PII, só do dono; estado DEPOIS do
+    turno), escritas bem-sucedidas e fatos de memória gravados pela plataforma.
+    """
+    import agent
+    import profiles
+    from db import poc
+
+    parts = []
+    prof = result.get("profile") or {}
+    try:
+        area = await profiles.get_area_profile(prof.get("area") or "default")
+        if area.get("persona"):
+            parts.append(f"REGRAS DA ÁREA {prof.get('label') or ''}: {area['persona']}")
+    except Exception:  # noqa: BLE001 — contexto parcial ainda serve ao juiz
+        pass
+    cache = result.get("cache") or {}
+    if cache.get("hit"):
+        parts.append(f"RESPOSTA SERVIDA DO CACHE SEMÂNTICO (FAQ/entrada validada): "
+                     f"pergunta casada \"{cache.get('matched_question')}\"")
+    for order_id in sorted(set(agent.ORDER_ID_RE.findall(case["message"]))):
+        doc = await poc()["support_orders"].find_one({"order_id": order_id},
+                                                     {**agent.ORDER_FIELDS_FOR_AGENT,
+                                                      "owner_user_key": 1})
+        if not doc:
+            parts.append(f"PEDIDO {order_id}: não existe.")
+        elif doc.pop("owner_user_key", None) != case["user_key"]:
+            parts.append(f"PEDIDO {order_id}: pertence a OUTRO cliente (não pode ser exposto).")
+        else:
+            parts.append(f"PEDIDO {order_id} (estado depois do turno): "
+                         f"{json.dumps(doc, ensure_ascii=False, default=str)}")
+    parts.append(f"ESCRITAS BEM-SUCEDIDAS EM PEDIDOS NESTE TURNO: {int(metrics.get('order_writes_ok', 0))}")
+    new_facts = (result.get("memory") or {}).get("new_facts") or []
+    parts.append("A PLATAFORMA grava preferências do cliente na memória de longo prazo "
+                 f"automaticamente; fatos gravados neste turno: {len(new_facts)}")
+    if metrics.get("web_searches"):
+        parts.append(f"BUSCA WEB executada neste turno: {metrics['web_searches']} vez(es)")
+    return "\n".join(parts)[:limit]
+
+
 def tool_evidence(result: dict, limit: int = 3000) -> str:
     """Resultados de ferramenta do trace (já sem PII), na ordem, cortados em `limit`."""
     parts = []
@@ -184,12 +229,15 @@ def tool_evidence(result: dict, limit: int = 3000) -> str:
 
 JUDGE_SYSTEM = (
     "Você avalia a resposta de um agente de atendimento de e-commerce. Receberá a pergunta do "
-    "cliente, as EVIDÊNCIAS (resultados de ferramentas do turno) e a resposta. Responda SÓ um JSON: "
+    "cliente, os FATOS DO TURNO (regras da área, pedidos citados, escritas feitas, memória) e a "
+    "resposta. Responda SÓ um JSON: "
     '{"faithful": bool, "answers_question": bool, "unbacked_claim": bool, "reason": "<até 30 palavras>"}. '
-    "faithful=false se a resposta afirma fato que contradiz ou não está nas evidências nem é "
-    "conhecimento geral óbvio. unbacked_claim=true se diz que fez algo (abriu chamado, registrou "
-    "troca/reembolso) sem evidência de escrita, ou promete prazo sem fonte. Uma recusa educada a um "
-    "pedido indevido responde à pergunta.")
+    "faithful=false se a resposta afirma fato que contradiz os fatos do turno ou que não está neles "
+    "nem é conhecimento geral óbvio (datas do pedido: aceite conversão de fuso UTC→Brasília). "
+    "unbacked_claim=true se diz que fez algo no pedido (abriu chamado, registrou troca/reembolso) "
+    "com 0 escritas, ou promete prazo que não está nas regras/fatos. Confirmar preferência "
+    "registrada é verdadeiro (a plataforma grava). Uma recusa educada a um pedido indevido "
+    "responde à pergunta.")
 
 
 async def judge_rows(rows: list[dict], model: str) -> dict:
@@ -202,7 +250,7 @@ async def judge_rows(rows: list[dict], model: str) -> dict:
         payload = row.get("_judge_input") or {}
         if not payload.get("answer"):
             continue
-        prompt = (f"PERGUNTA: {payload['message']}\n\nEVIDÊNCIAS:\n{payload.get('evidence') or '(nenhuma ferramenta)'}"
+        prompt = (f"PERGUNTA: {payload['message']}\n\nFATOS DO TURNO:\n{payload.get('evidence') or '(nenhum)'}"
                   f"\n\nRESPOSTA:\n{payload['answer']}")
         try:
             resp = await client.create(model=model, max_tokens=300, system=JUDGE_SYSTEM,

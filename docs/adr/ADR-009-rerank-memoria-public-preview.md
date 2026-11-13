@@ -70,3 +70,8 @@ Leitura:
 - O preflight confere o modelo configurado quando o rerank está ligado (aviso, não falha).
 - Recalibrar a decisão se a memória por usuário crescer: com centenas de fatos o recall@5 deixa
   de ser 1,0 e o rerank passa a mudar o CONJUNTO, não só a ordem.
+
+## Revisão (2026-11-12)
+Status reconferido: `$rerank` exige 9.0+ no Atlas; `rerank-3`/`rerank-3-lite` seguem marcados
+como Preview no estágio, `rerank-2.5` não tem o rótulo mas a Voyage o trata como legado, e o GA do
+estágio não foi confirmado. Continua desligado por padrão; nada muda no código.

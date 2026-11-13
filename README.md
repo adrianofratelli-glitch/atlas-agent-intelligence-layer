@@ -57,6 +57,10 @@ Each step is a real MongoDB operation, visible in the trace and in the in-app in
 
 **Cache hygiene.** Turns that touched a specific order or used the customer's own facts never reach the cache, because a personalized answer must not be replayed for someone else. Entries created at runtime carry `expires_at` and a TTL index removes them; seeded FAQs never expire.
 
+**An empty search is not an answer.** Atlas returns an empty list, not an error, when a `$vectorSearch` hits a missing or still-building index. Every layer that decides on "nothing similar" (denylist, turn classifier, memory legs, cache) checks `list_search_indexes` before trusting the empty result, so a fail-closed area stays closed while an index rebuilds ([ADR-013](docs/adr/ADR-013-busca-vazia-exige-indice-consultavel.md)).
+
+**The answer is checked against what the turn did.** If the agent says it opened a ticket or registered a refund without a successful write in that turn, or promises a deadline that is not in the area rules or the data, the turn is flagged in the trace, in `guardrail_events` and on screen (`backend/answer_checks.py`). The eval fails those cases too.
+
 **Memory is data, never instruction.** Facts are injected between `<customer_facts>` delimiters with an explicit instruction to ignore embedded commands and never copy markers a fact asks for. The extractor refuses instruction-shaped "facts", and the same check runs again on retrieval: a fact written by any other path (import, script, compromised data) that reads like an order to the assistant is quarantined and never reaches the prompt (`memory.quarantine`). This is the defense against memory poisoning.
 
 **What stops the agent from dropping a collection.** The loop exposes only `find`, `aggregate`, and a scoped `update-many`. Every call is rewritten server-side before it reaches the MCP server: order reads require a scalar `PED-...` ID and get a PII-free projection, writes may set a single approved status field, and session reads are pinned to the caller. In production, also restrict the MCP server's Atlas user to the exact collections, or run it with `MDB_MCP_READ_ONLY=true`.

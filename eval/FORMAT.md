@@ -41,7 +41,16 @@ está listado em **Diferenças** — nada de silencioso.
 | `expect_blocked` | não | resolvido = bloqueio do guardrail de entrada |
 | `expect_personal_turn` | não | o turno é pessoal: NÃO pode ler nem gravar o cache compartilhado |
 | `expect_cache_hit` | não | o caso deve ser servido do cache semântico (sem chamada ao LLM) |
+| `expect_answer_any` | não | a resposta contém ao menos um destes trechos (sem acento/caixa); vem do seed (produto, status) |
+| `forbid_answer_any` | não | nenhum destes trechos pode aparecer (PII do cliente, produto de outro dono) |
+| `expect_write` | não | o turno precisa de ≥ 1 `update-many` bem-sucedido (`metrics.order_writes_ok`) |
+| `expect_no_write` | não | o turno não pode escrever (consulta, pedido fora da política) |
 | `notes` | não | por que a expectativa é essa |
+
+Desde a v2 (2026-11-12) o caso também reprova por `answer_checks` do próprio turno
+(`resposta_sem_respaldo:promessa_sem_escrita` / `:prazo_sem_fonte`, ver `backend/answer_checks.py`).
+Antes de cada rodada `--live`, os pedidos do banco de teste voltam ao seed (`--keep-orders` desliga),
+porque as expectativas de conteúdo dependem do status de partida.
 
 `synthetic: true` é obrigatório porque as frases foram escritas por um modelo. Dataset e agente
 saem da MESMA família de modelo (Claude); isso está em `limitation` e é repetido no relatório.
@@ -56,6 +65,10 @@ saem da MESMA família de modelo (Claude); isso está em `limitation` e é repet
 * **Latência p50/p95 por turno** e **custo estimado** (do ledger real de `gateway.py`, com
   `cost_complete` dizendo se TODAS as chamadas tinham tarifa conhecida — preço faltando nunca
   vira zero).
+* **Conteúdo da resposta** — `content_failures` (casos reprovados por conteúdo, escrita ou
+  `answer_checks`) e `answer_flagged_turns`. Com `--judge <modelo>`, `summary.judge` traz a taxa
+  de aprovação de um juiz de OUTRA família (GPT via Grove) e os casos em que ele discorda do eval.
+  O juiz não decide `passed`: é opinião de modelo, não rótulo humano.
 * **Isolamento de cache/memória** — `cache_leaks`: turnos pessoais que leram ou gravaram o cache
   compartilhado. Qualquer valor > 0 é falha, não estatística.
 

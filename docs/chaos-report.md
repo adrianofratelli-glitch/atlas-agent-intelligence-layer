@@ -48,6 +48,18 @@ demo, que é recusado sem `ALLOW_DEMO_DB_WRITE=1`.
 | `mcp_supervisor_reconnects` | sessão do slot caindo no ping | slot vira `None` com o erro registrado e o supervisor reabre sozinho; vizinho intacto | PASS (0,15s) |
 | `stale_checkpoint_recovery` | checkpoint `pending_turn` deixado por um crash anterior na mesma conversa | o próximo turno detecta, anuncia a retomada no trace e limpa o checkpoint | PASS (5,9s) |
 
+### Adendo 2026-11-12: índice ausente devolve vazio, não erro (ADR-013)
+
+`index_building` e `search_unavailable` simulam o índice fora com `OperationFailure`. Medido hoje:
+o Atlas devolve `[]` **sem erro** para índice inexistente, e a denylist lia isso como "sem match"
+(área fail-closed liberava a mensagem). Novo cenário `index_empty` (`chaos.py`): `aggregate_list`
+devolve vazio e `list_search_indexes` do índice alvo responde não pronto.
+
+| Cenário | O que injeta | Assertion | Resultado |
+|---|---|---|---|
+| `guardrail_index_empty` | `$vectorSearch` da denylist devolve `[]`, `guardrail_denylist_vs` não pronto (caminho real, sem dublê de `_semantic_denylist`) | fail-closed bloqueia com `denylist_indisponivel`; fail-open atende | PASS (0,01s) |
+| `memory_vector_index_empty` | `$rankFusion`/`$vectorSearch` vazios, `agent_memory_vs` não pronto (LIVE, `POC_test`) | só a perna lexical, `mode=lexical`, fato certo mantido, 0 vazamento | PASS (2,35s) |
+
 ## Modos de falha do Atlas que a bateria cobre
 
 Três cenários novos existem porque esta PoV **vende o Atlas**, e resiliência de banco não pode

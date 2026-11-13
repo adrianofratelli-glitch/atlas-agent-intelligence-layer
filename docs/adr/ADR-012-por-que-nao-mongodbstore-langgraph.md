@@ -48,3 +48,10 @@ fuzzy) com `scoreDetails` no inspector, config viva por documento e `$rerank` op
 - Checkpoint continua no `MongoDBSaver` (estado do grafo, onde o contrato do LangGraph é o certo).
 - Reavaliar se o store ganhar escrita condicional/transacional e um modo de recusar namespace
   vazio, ou se a PoV precisar de memória compartilhada entre agentes LangGraph de terceiros.
+
+## Reavaliação (2026-11-12)
+Conferido contra `langgraph-store-mongodb` 0.4.0: o `MongoDBStore` segue síncrono (o assíncrono
+é `run_in_executor`), com TTL por `updated_at`, um único campo vetorial e suporte a autoEmbed e
+`$rerank`. Nenhum dos três gatilhos acima mudou (escrita transacional de supersessão, recusa de
+namespace vazio, quarentena na leitura). Decisão mantida. `$rerank` continua desligado no seed
+pelo mesmo motivo do ADR-009 (`rerank-3*` em Preview; GA do estágio não confirmado na data).

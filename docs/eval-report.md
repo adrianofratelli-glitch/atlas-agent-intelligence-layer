@@ -87,7 +87,7 @@ vêm do seed, não de rótulo humano; o juiz reduz o viés de família, não o e
 ## Rodadas de 13/11/2026: correção determinística e revisão do juiz
 
 Relatórios com transcrição (`--transcripts`): pergunta, fatos dados ao juiz e resposta entregue em
-`eval/reports/live-2026-11-13-base.json` (antes das mudanças) e `live-2026-11-13-final{1,2,3}.json`.
+`eval/reports/live-2026-11-13-base.json` (antes das mudanças), `live-2026-11-13-final{1,2,3}.json` e `live-2026-11-13-head.json` (a final, sobre o código revisado).
 
 ```bash
 cd backend && .venv/bin/python eval_agent.py --live --judge gpt-4.1 --transcripts \
@@ -102,8 +102,9 @@ cd backend && .venv/bin/python eval_agent.py --live --judge gpt-4.1 --transcript
 | **final 1** | **100% (28/28)** | nenhum | 0 | 23/28 (82,1%) | 12,9 s / 26,1 s | US$ 0,472 |
 | **final 2** | **100% (28/28)** | nenhum | 1 (`single-028`, pedido inventado) | 22/28 (78,6%) | 12,9 s / 27,0 s | US$ 0,471 |
 | **final 3** | **100% (28/28)** | nenhum | 0 | 22/28 (78,6%) | 12,5 s / 25,2 s | US$ 0,442 |
+| **final sobre o HEAD da revisão** (`live-2026-11-13-head.json`) | **100% (28/28)** | nenhum | 1 (`single-009`, pedido inventado → pedido do número) | 23/28 (82,1%) | 13,0 s / 26,9 s | US$ 0,508 |
 
-Todas com `cost_complete`, 0 turnos degradados e 0 vazamentos de cache. As finais rodaram sobre a
+Todas com `cost_complete`, 0 turnos degradados e 0 vazamentos de cache. A rodada **final** é a última linha, sobre o código revisado: a reescrita pula a ocorrência negada, nenhum nome de banco fica fixo e os fatos vão mascarados ao juiz e ao transcript. Os quatro relatórios anteriores foram remascarados com a política das áreas. O juiz discordou em 5 casos: `single-001`, `single-004`, `single-006` e `single-016`, com a classificação abaixo, e `single-017`, erro do agente da mesma classe do `single-002`: contato, logística reversa e ajuste de preço inventados. As finais rodaram sobre a
 reescrita de promessa e de pedido sem fonte. Depois da final 2, o texto que substitui o pedido
 inventado mudou: a lista real do cliente deu lugar ao pedido do número (ADR-014, item 4). A mudança
 não afeta a aprovação, porque nenhuma das duas versões deixa pedido sem fonte. Ela foi conferida em

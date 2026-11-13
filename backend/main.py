@@ -58,7 +58,7 @@ from agent import (
     warm_up_session,
 )
 import web_search
-from db import MAX_TIME_MS, SESSION_IDLE_SECONDS, SafeQueryError, ai_brain, get_client, poc, safe_query
+from db import DB_BRAIN, DB_MAIN, MAX_TIME_MS, SESSION_IDLE_SECONDS, SafeQueryError, ai_brain, get_client, poc, safe_query
 import gateway
 from llm import call_with_fallback, get_active_config
 
@@ -1078,7 +1078,7 @@ async def cache_inspect():
     """The semantic cache contents — question, answer, reuse count."""
     cfg = await cache.get_config()
     return clean({"entries": await cache.recent(), "threshold": cfg["hit_threshold"],
-                  "collection": f"POC.{cache.CACHE_COLLECTION}",
+                  "collection": f"{DB_MAIN}.{cache.CACHE_COLLECTION}",
                   "index": cache.CACHE_INDEX})
 
 
@@ -1110,7 +1110,7 @@ async def memory_short_inspect(conversation_id: str, user_key: str, request: Req
     )
     if doc is None:
         return clean({"session_id": conversation_id, "turns": [],
-                      "collection": "POC.agent_sessions"})
+                      "collection": f"{DB_MAIN}.agent_sessions"})
     # TTL (ADR-002): a session's `updated_at` drives a MongoDB TTL index — no
     # cron, no invalidation code. Surfaced here so the inspector shows it
     # instead of looking like the session lives forever.
@@ -1150,8 +1150,8 @@ async def guardrails_rules(area: str = "default"):
         "area": area,
         "policy": policy,
         "denylist": denylist,
-        "denylist_collection": f"POC.{guardrails.DENYLIST_COLLECTION}",
-        "policy_collection": f"ai_brain.{guardrails.POLICY_COLLECTION}",
+        "denylist_collection": f"{DB_MAIN}.{guardrails.DENYLIST_COLLECTION}",
+        "policy_collection": f"{DB_BRAIN}.{guardrails.POLICY_COLLECTION}",
     })
 
 
@@ -1184,7 +1184,7 @@ async def guardrails_events(request: Request, user_key: str | None = None,
     scoped = await _scoped_area(request, user_key, area)
     return clean({"events": await guardrails.recent_events(area=scoped),
                   "area": scoped or "all",
-                  "collection": f"POC.{guardrails.EVENTS_COLLECTION}"})
+                  "collection": f"{DB_MAIN}.{guardrails.EVENTS_COLLECTION}"})
 
 
 @app.get("/api/guardrails/candidates")
@@ -1196,7 +1196,7 @@ async def guardrails_candidates(request: Request, status: str = "pending",
     scoped = await _scoped_area(request, user_key, area)
     return clean({"candidates": await guardrails.list_candidates(status, area=scoped),
                   "area": scoped or "all",
-                  "collection": f"POC.{guardrails.CANDIDATES_COLLECTION}"})
+                  "collection": f"{DB_MAIN}.{guardrails.CANDIDATES_COLLECTION}"})
 
 
 @app.post("/api/guardrails/candidates/{candidate_id}/review")

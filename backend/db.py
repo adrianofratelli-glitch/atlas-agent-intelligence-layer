@@ -210,7 +210,7 @@ async def safe_query(awaitable):
             raise SafeQueryError(
                 "search",
                 "O Atlas Search (mongot) está indisponível ou o índice vetorial não foi encontrado. "
-                "Confira o índice 'produtos_vector' em POC.produtos_vector.",
+                f"Confira o índice 'produtos_vector' em {DB_CATALOG}.produtos_vector.",
             )
         if "index not found" in msg or "no such index" in msg:
             raise SafeQueryError(

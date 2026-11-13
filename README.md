@@ -117,7 +117,7 @@ By default the launcher serves the optimized frontend build without a watcher. F
 ```bash
 cd backend && .venv/bin/python -m unittest discover -s tests -v   # includes the *_adversarial suites
 cd backend && .venv/bin/python scripts/measure_dilution.py        # read-only: denylist scores before/after per-clause scoring
-cd backend && .venv/bin/python calibrate_thresholds.py            # --apply writes the measured thresholds
+cd backend && .venv/bin/python calibrate_thresholds.py            # --apply writes the measured thresholds (MONGODB_*_DB; outside *_test needs ALLOW_DEMO_DB_WRITE=1)
 npm install && npx playwright install chromium && npm run test:visual   # Playwright visual regression, app running
 ```
 

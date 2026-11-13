@@ -45,7 +45,7 @@ import policy_guardrails as guardrails
 import profiles
 import turn_classifier
 import web_search
-from db import DB_MAIN, MAX_TIME_MS, SESSION_IDLE_SECONDS, poc
+from db import DB_BRAIN, DB_MAIN, MAX_TIME_MS, SESSION_IDLE_SECONDS, poc
 from guidance import is_obviously_out_of_scope, scope_reply
 
 logger = logging.getLogger("poc.agent_graph")
@@ -529,7 +529,7 @@ async def n_run_pipeline(state: TurnState, config) -> dict:
     persona = (area_profile.get("persona") or "").strip()
     persona_block = (
         f"\n\nRegras da área \"{profile_info['label']}\" (carregadas de "
-        f"ai_brain.area_profiles):\n{persona}" if persona else "")
+        f"{DB_BRAIN}.area_profiles):\n{persona}" if persona else "")
     summary_block = (
         f"\n\nResumo do início desta conversa (turnos mais antigos, já fora da "
         f"janela recente): {history_summary}" if history_summary else "")

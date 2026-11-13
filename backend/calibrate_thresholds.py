@@ -180,6 +180,16 @@ def calibrate(coll, index: str, path: str, probes: list[tuple[bool, str, str]], 
     return suggested
 
 
+def apply_refusal(brain_db: str, env) -> str | None:
+    """`--apply` grava limiares em config viva. Fora de banco `*_test` só com
+    `ALLOW_DEMO_DB_WRITE=1` (mesma trava de `scripts/isolation.py`): recalibrar a demo é
+    decisão consciente, nunca efeito colateral de um comando copiado."""
+    if brain_db.endswith("_test") or env.get("ALLOW_DEMO_DB_WRITE") == "1":
+        return None
+    return (f"--apply recusado: {brain_db} não é banco de teste. Para recalibrar a demo de "
+            "propósito, rode com ALLOW_DEMO_DB_WRITE=1 (fora de apresentação).")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--apply", action="store_true",
@@ -198,18 +208,23 @@ def main() -> None:
         sys.exit("MONGODB_URI não definida — copie .env.example para .env e preencha.")
     client = MongoClient(uri, serverSelectionTimeoutMS=15_000)
     client.admin.command("ping")
-    poc = client["POC"]
-    ai_brain = client["ai_brain"]
+    main_db, brain_db = os.getenv("MONGODB_DB", "POC"), os.getenv("MONGODB_BRAIN_DB", "ai_brain")
+    if args.apply:
+        refusal = apply_refusal(brain_db, os.environ)
+        if refusal:
+            sys.exit(refusal)
+    poc = client[main_db]
+    ai_brain = client[brain_db]
 
     cache_thr = calibrate(poc["semantic_cache"], "semantic_cache_vs", "question",
-                          CACHE_PROBES, "Cache semântico (POC.semantic_cache)"
+                          CACHE_PROBES, f"Cache semântico ({main_db}.semantic_cache)"
                           ) if "cache" in wanted else None
     deny_thr = calibrate(poc["guardrail_denylist"], "guardrail_denylist_vs", "phrase",
-                         DENYLIST_PROBES, "Denylist semântico (POC.guardrail_denylist)"
+                         DENYLIST_PROBES, f"Denylist semântico ({main_db}.guardrail_denylist)"
                          ) if "denylist" in wanted else None
 
     turn_thr = calibrate(ai_brain["turn_probes"], "turn_probes_vs", "phrase",
-                         TURN_PROBES, "Classificador de turno (ai_brain.turn_probes)",
+                         TURN_PROBES, f"Classificador de turno ({brain_db}.turn_probes)",
                          allow_errors=args.allow_errors) if "turn" in wanted else None
 
     # Threshold POR ÁREA, quando a área tem probes próprios dos dois lados. Uma

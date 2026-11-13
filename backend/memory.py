@@ -36,7 +36,7 @@ from anthropic import AsyncAnthropic
 from bson import ObjectId
 
 import search_readiness
-from db import (MAX_TIME_MS, aggregate_list, ai_brain, get_client, poc, safe_query,
+from db import (DB_MAIN, MAX_TIME_MS, aggregate_list, ai_brain, get_client, poc, safe_query,
                 tenant_vector_stage)
 
 logger = logging.getLogger(__name__)
@@ -286,7 +286,7 @@ async def load_longterm(user_key: str, include_history: bool = False) -> dict:
     out = {
         "user_key": user_key,
         "facts": [_fact_out(d) for d in docs],
-        "collection": f"POC.{MEMORY_COLLECTION}",
+        "collection": f"{DB_MAIN}.{MEMORY_COLLECTION}",
     }
     if include_history:
         cursor = (
@@ -569,7 +569,7 @@ async def load_relevant(user_key: str, query: str, *, strategy: str | None = Non
         _active_docs(user_key, limit=RELEVANT_LIMIT + 1),
     )
     base = {"user_key": user_key, "total_active": total,
-            "collection": f"POC.{MEMORY_COLLECTION}"}
+            "collection": f"{DB_MAIN}.{MEMORY_COLLECTION}"}
     if total == 0:
         return {**base, "facts": [], "mode": "all", "retrieval": {"strategy": "all"}}
     if total <= RELEVANT_LIMIT:
@@ -697,7 +697,7 @@ def format_for_prompt(ltm: dict, max_chars: int = MAX_PROMPT_MEMORY_CHARS) -> st
     )
     return (
         "\n\nMemória de longo prazo — o que você já sabe sobre este cliente "
-        f'({picked}, recuperados de POC.{MEMORY_COLLECTION}, '
+        f'({picked}, recuperados de {DB_MAIN}.{MEMORY_COLLECTION}, '
         f'user_key="{ltm["user_key"]}"):\n'
         "<fatos_do_cliente>\n"
         f"{lines}\n"

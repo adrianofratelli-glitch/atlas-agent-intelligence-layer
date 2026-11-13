@@ -11,7 +11,7 @@ import time
 from anthropic import APIError, AsyncAnthropic
 
 import observability
-from db import MAX_TIME_MS, SafeQueryError, ai_brain, safe_query
+from db import DB_BRAIN, MAX_TIME_MS, SafeQueryError, ai_brain, safe_query
 
 from gateway import GatewayClient, metered_turn
 
@@ -52,7 +52,7 @@ async def get_active_config(area: str = "default") -> dict:
     if not doc:
         raise SafeQueryError(
             "config",
-            "Nenhum documento ativo em ai_brain.model_config. Rode backend/seed.py.",
+            f"Nenhum documento ativo em {DB_BRAIN}.model_config. Rode backend/seed.py.",
         )
     if CONFIG_CACHE_SECONDS > 0:
         _config_cache[area] = (time.monotonic(), doc)

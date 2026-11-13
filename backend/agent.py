@@ -605,7 +605,7 @@ relatar falha nova nem pedir troca, informe o histórico e NÃO escreva nada —
 abrir chamado a partir de uma pergunta cria trabalho que ninguém pediu. Nesse \
 caso, sem escrita, OFEREÇA encaminhar para a análise de qualidade e pergunte se o \
 cliente quer; nunca diga que o caso "foi encaminhado" ou "vai para análise".
-5. update-many é EXCLUSIVO para POC.support_orders. NUNCA escreva em \
+5. update-many é EXCLUSIVO para a collection "support_orders" do database "POC". NUNCA escreva em \
 agent_memory, agent_sessions ou qualquer outra collection: a memória do cliente \
 é gerenciada automaticamente pela plataforma (o app bloqueia essas escritas).
 6. PREFERÊNCIAS DO CLIENTE: se o cliente informar uma preferência durável \

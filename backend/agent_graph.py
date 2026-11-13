@@ -375,14 +375,28 @@ async def _memory_relevance(user_msg: str, personal_turn: bool) -> dict | None:
         return None
 
 
+async def _real_orders_text(user_key: str, grounding: str) -> str:
+    """O que entra no lugar de pedidos inventados: os pedidos reais do dono."""
+    import guidance
+
+    if "nao liste os pedidos" in answer_checks.fold(grounding):
+        return "Para consultar um pedido, me informe o número dele (formato PED-0000)."
+    orders = await guidance.user_orders(user_key)
+    if not orders:
+        return ("Não encontrei pedidos registrados para você. Se tiver o número de um "
+                "pedido, me envie.")
+    return "Seus pedidos registrados:\n" + guidance._format_orders(orders)
+
+
 async def _answer_fidelity(ctx: dict, trace: list, metrics: dict, guard_out: dict,
                            final_answer: str, *, grounding: str, user_key: str,
                            conversation_id: str, area: str) -> str:
     """Fidelidade da resposta, depois da máscara de PII. Devolve o texto a ENTREGAR.
 
     Ação afirmada sem escrita vira OFERTA antes de chegar ao cliente (ADR-014; o texto
-    do modelo continua no evento `reasoning` do trace e na auditoria). O que sobrar
-    (prazo sem fonte) é apontado e não bloqueia. Preenche `guard_out["answer_rewrites"]`
+    do modelo continua no evento `reasoning` do trace e na auditoria). Pedido citado sem
+    fonte sai da resposta e dá lugar aos pedidos reais do dono. O que sobrar (prazo sem
+    fonte) é apontado e não bloqueia. Preenche `guard_out["answer_rewrites"]`
     e `guard_out["answer_checks"]` (este já sobre o texto entregue)."""
     writes_ok = metrics.get("order_writes_ok", 0)
     rewrites: list[dict] = []
@@ -398,6 +412,26 @@ async def _answer_fidelity(ctx: dict, trace: list, metrics: dict, guard_out: dic
                          "(o cliente não recebe promessa falsa; original auditado).")
             await guardrails.log_answer_flags(original_answer, rewrites, user_key,
                                               conversation_id, area, action="rewrite")
+        # Pedido inventado: o trecho sai e entra a lista REAL do dono (ou o pedido do número
+        # quando o turno negou uma consulta ampla: listar ali desfaria a política).
+        if answer_checks.ungrounded_orders(final_answer, grounding=grounding):
+            replacement = await _real_orders_text(user_key, grounding)
+            before = final_answer
+            final_answer, dropped = answer_checks.drop_ungrounded_orders(
+                final_answer, grounding=grounding, replacement=replacement)
+            if dropped:
+                grounding = grounding + "\n" + replacement
+                change = {"rule": "pedido_sem_fonte", "kind": "fidelidade", "action": "rewrite",
+                          "before": ", ".join(dropped)[:200], "after": replacement[:200]}
+                rewrites.append(change)
+                metrics["answer_rewrites"] = len(rewrites)
+                observability.metrics.bump("answer_rewrites", 1)
+                _emit(ctx, trace, "act", "guardrail", actor="guardrail", stage="output",
+                      action="rewrite", violations=[change],
+                      result=f"Pedido(s) sem fonte no turno removido(s) da resposta "
+                             f"({', '.join(dropped)}); entrou a lista real do cliente.")
+                await guardrails.log_answer_flags(before, [change], user_key,
+                                                  conversation_id, area, action="rewrite")
     guard_out["answer_rewrites"] = rewrites
     answer_flags = answer_checks.check(final_answer, writes_ok=writes_ok, grounding=grounding)
     guard_out["answer_checks"] = answer_flags

@@ -37,10 +37,19 @@ Uma regra que importa não pode depender de o modelo obedecer ao texto do prompt
    * `guard_out["answer_checks"]`: checagem sobre o texto ENTREGUE. O prazo sem fonte continua
      apontado e não é reescrito, porque não há frase segura para pôr no lugar de um número
      inventado.
-4. O card da aba Agente mostra "Guardrails · promessa virou oferta" com a frase antes e depois.
-5. O eval julga a resposta entregue e expõe `answer_rewritten_turns` no resumo e
+4. **Pedido sem fonte, a mesma lógica.** `pedido_sem_fonte` aponta um `PED-…` da resposta que não
+   aparece na mensagem, no histórico, no prompt nem nos resultados de ferramenta. Na rodada 2 de 13/11,
+   com a regra 7b já dizendo "sem pedido informado, não cite número", o agente inventou outra lista
+   ("PED-8901 – Fone Bluetooth Premium…"). `answer_checks.drop_ungrounded_orders` tira da resposta o
+   item de lista ou a frase com o pedido inventado. Também tira a linha que só apresentava a lista,
+   como "você possui 4 pedidos:". No lugar entram os pedidos reais do dono
+   (`agent_graph._real_orders_text`, o mesmo `guidance.user_orders` da orientação de escopo, sem PII).
+   Quando o turno negou uma consulta ampla, entra só o pedido do número, porque listar ali desfaria a
+   política.
+5. O card da aba Agente mostra "Guardrails · promessa virou oferta" com a frase antes e depois.
+6. O eval julga a resposta entregue e expõe `answer_rewritten_turns` no resumo e
    `answer_rewrites` por caso: a taxa de 28/28 não esconde que o modelo ainda escreveu a promessa.
-6. `ANSWER_REWRITE=0` volta ao comportamento anterior, em que a checagem só aponta. A flag existe
+7. `ANSWER_REWRITE=0` volta ao comportamento anterior, em que a checagem só aponta. A flag existe
    só para reverter.
 
 ## Alternativas descartadas
@@ -67,5 +76,6 @@ Uma regra que importa não pode depender de o modelo obedecer ao texto do prompt
 ## Evidência
 * `backend/tests/test_answer_checks.py`: `RewriteTests` usa a resposta real do `single-005`,
   `TurnWiringTests` cobre trace, auditoria, flag de reversão e turno com escrita, e
-  `NegationTests` cobre os relatos negativos.
+  `NegationTests` cobre os relatos negativos. `UngroundedOrderTests` e
+  `DropUngroundedOrderTests` usam a resposta real do `single-009`.
 * Eval ao vivo em `POC_test`: ver `docs/eval-report.md`, rodadas de 13/11.

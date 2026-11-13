@@ -192,6 +192,41 @@ class MemoryNoteTests(unittest.TestCase):
         self.assertIn("acabou de começar", note)
 
 
+class DropUngroundedOrderTests(unittest.TestCase):
+    # Resposta real do `single-009` na rodada 2 de 2026-11-13 (0 ferramentas no turno).
+    LIVE = ("Essa pergunta está fora do escopo do meu atendimento.\n\n"
+            "Agora, sobre seus pedidos na loja: você possui atualmente **4 pedidos** cadastrados:\n\n"
+            "- **PED-8901** - Fone Bluetooth Premium\n- **PED-8902** - Mouse Ergonômico\n"
+            "- **PED-8903** - Teclado Mecânico RGB\n- **PED-8904** - Webcam Full HD\n\n"
+            "Posso ajudá-lo com algum desses pedidos ou com outra questão relacionada à loja?")
+
+    def test_invented_list_and_its_intro_give_place_to_the_real_list(self):
+        text, ids = ac.drop_ungrounded_orders(self.LIVE, grounding="",
+                                              replacement="Seus pedidos registrados:\n- PED-1001 — Tour One")
+        self.assertEqual(ids, ["PED-8901", "PED-8902", "PED-8903", "PED-8904"])
+        self.assertNotIn("PED-89", text)
+        self.assertNotIn("4 pedidos", text)
+        self.assertEqual(text, "Essa pergunta está fora do escopo do meu atendimento.\n\n"
+                               "Seus pedidos registrados:\n- PED-1001 — Tour One\n\n"
+                               "Posso ajudá-lo com algum desses pedidos ou com outra questão "
+                               "relacionada à loja?")
+
+    def test_inline_sentence_is_dropped_and_grounded_order_stays(self):
+        text, ids = ac.drop_ungrounded_orders(
+            "O PED-1003 está em trânsito. Você também tem o PED-9999 em aberto. Algo mais?",
+            grounding="PED-1003", replacement="R")
+        self.assertEqual((text, ids), ("O PED-1003 está em trânsito. Algo mais?\nR", ["PED-9999"]))
+
+    def test_nothing_invented_nothing_changes(self):
+        self.assertEqual(ac.drop_ungrounded_orders("O PED-1003 chegou.", grounding="ped-1003",
+                                                   replacement="R"), ("O PED-1003 chegou.", []))
+
+
+def asyncio_run(coro):
+    import asyncio
+    return asyncio.run(coro)
+
+
 class TurnWiringTests(unittest.TestCase):
     """agent_graph._answer_fidelity: o cliente recebe a oferta; trace e auditoria ficam com o original."""
 
@@ -233,6 +268,27 @@ class TurnWiringTests(unittest.TestCase):
         self.assertEqual(out, SINGLE_005)
         self.assertEqual(guard_out["answer_rewrites"], [])
         self.assertEqual([f["rule"] for f in guard_out["answer_checks"]], ["promessa_sem_escrita"])
+
+    def test_invented_orders_are_replaced_by_the_owner_real_orders(self):
+        import agent_graph
+        import guidance
+
+        async def orders(user_key):
+            return [{"order_id": "PED-1001", "product_name": "Tour One", "status": "entregue"}]
+
+        with unittest.mock.patch.object(guidance, "user_orders", orders):
+            out, trace, metrics, guard_out, logged = self._run(DropUngroundedOrderTests.LIVE)
+        self.assertNotIn("PED-8901", out)
+        self.assertIn("- PED-1001 — Tour One (status: entregue)", out)
+        self.assertEqual(guard_out["answer_checks"], [], "a lista real não é apontada como sem fonte")
+        self.assertEqual([r["rule"] for r in guard_out["answer_rewrites"]], ["pedido_sem_fonte"])
+        self.assertIn("PED-8901", logged[0][1], "auditoria guarda o texto do modelo")
+
+    def test_broad_listing_denial_never_gets_a_list(self):
+        import agent_graph
+        out = asyncio_run(agent_graph._real_orders_text(
+            "cliente-demo", "[orientação da plataforma] NÃO liste os pedidos dele nesta resposta"))
+        self.assertNotIn("PED-1", out)
 
     def test_write_in_the_turn_leaves_the_answer_alone(self):
         out, trace, _, guard_out, logged = self._run(SINGLE_005, writes_ok=1)

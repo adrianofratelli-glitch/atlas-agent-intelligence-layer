@@ -202,6 +202,68 @@ def ungrounded_orders(answer: str, *, grounding: str) -> list[dict]:
     return out
 
 
+_LIST_ITEM_RE = re.compile(r"^\s*(?:[-*•]|\d+[.)])\s+")
+
+
+def drop_ungrounded_orders(answer: str, *, grounding: str,
+                           replacement: str) -> tuple[str, list[str]]:
+    """Tira da resposta o que cita pedido sem fonte e põe `replacement` no lugar.
+
+    Medido ao vivo (2026-11-13, `single-009`, duas de quatro rodadas): mesmo com a regra
+    7b dizendo "sem pedido informado, não cite número", o agente inventou listas como
+    "PED-8901 – Fone Bluetooth Premium". O prompt não elimina; a plataforma corrige,
+    como na promessa (ADR-014). Item de lista com pedido inventado sai inteiro; em
+    texto corrido sai a frase. A linha que só apresentava a lista ("você possui 4
+    pedidos:") sai junto quando todos os itens dela saíram. `replacement` (a lista
+    REAL, vinda do banco pelo dono) entra onde estava o primeiro trecho removido.
+    Devolve (texto, ids removidos); sem pedido inventado, o texto volta igual."""
+    source = {m.upper() for m in _ORDER_ID_RE.findall(grounding or "")}
+
+    def bad(text: str) -> list[str]:
+        return [m.upper() for m in _ORDER_ID_RE.findall(text) if m.upper() not in source]
+
+    if not bad(answer):
+        return answer, []
+    removed: list[str] = []
+    lines = answer.split("\n")
+    out: list[str | None] = []      # None = posição de um trecho removido
+    for line in lines:
+        ids = bad(line)
+        if not ids:
+            out.append(line)
+            continue
+        removed += ids
+        if _LIST_ITEM_RE.match(line):
+            out.append(None)
+            continue
+        kept = "".join(part for part in _SENTENCE_RE.findall(line) if not bad(part)).strip()
+        if kept:
+            out.append(kept)
+        out.append(None)
+    # introdução de lista ("…cadastrados:") cujo próximo trecho não vazio saiu
+    for i in range(len(out) - 1, -1, -1):
+        line = out[i]
+        if line is None or not line.rstrip().endswith(":"):
+            continue
+        nxt = next((x for x in out[i + 1:] if x is None or x.strip()), "")
+        if nxt is None:
+            out[i] = None
+    text_parts, placed = [], False
+    for line in out:
+        if line is None:
+            if not placed:
+                text_parts.append(replacement)
+                placed = True
+            continue
+        text_parts.append(line)
+    text = re.sub(r"\n{3,}", "\n\n", "\n".join(text_parts)).strip()
+    seen: list[str] = []
+    for oid in removed:
+        if oid not in seen:
+            seen.append(oid)
+    return text, seen
+
+
 def check(answer: str, *, writes_ok: int, grounding: str) -> list[dict]:
     """Todas as checagens. Lista vazia = nada a apontar."""
     if not answer or not answer.strip():

@@ -586,6 +586,12 @@ substituto. Sempre projete poucos campos e limite a 3 resultados.
 pedido com update-many em support_orders ANTES de responder ao cliente — use \
 "reembolso_solicitado", "troca_solicitada" ou "chamado_aberto", conforme o caso. \
 Para consulta de status, NÃO altere nada (apenas leia).
+4a. Só afirme uma ação no pedido (chamado aberto, troca ou reembolso registrado, \
+caso encaminhado) se o update-many dela rodou com sucesso NESTE turno. Numa \
+consulta de status a regra 4 continua valendo: não escreva nada; se a situação \
+pedir um chamado (atraso, extravio), OFEREÇA e pergunte se o cliente quer abrir — \
+nunca diga "vou abrir". Prazo de retorno ou de resolução só se estiver nas regras \
+da área ou nos dados: nunca invente "em até 24 horas" ou similar.
 4b. ANTES de prometer uma TROCA, consulte a cadeia de trocas do pedido \
 (aggregate em support_orders, ver acima). Se "needs_quality_review" vier true, \
 NÃO trate como troca de rotina: diga ao cliente, com o número de reposições, que \
@@ -1084,8 +1090,13 @@ async def _run_tool_loop(session, tools, system_static, system_dynamic, user_msg
                          fallback_model: str | None = None,
                          budget_brl: float | None = None,
                          web_cfg: dict | None = None,
-                         area: str = "default") -> str:
+                         area: str = "default",
+                         grounding: list[str] | None = None) -> str:
     """The core Claude ↔ MongoDB MCP tool-use loop. Returns the final answer text.
+
+    `grounding` (opcional) recebe o texto de cada resultado de ferramenta, na ordem:
+    é a fonte contra a qual `answer_checks` confere prazos citados na resposta.
+    `metrics["order_writes_ok"]` conta escritas que chegaram ao MCP sem erro.
 
     `web_cfg` (do `ai_brain.tool_registry`) presente = a ferramenta externa `web_search`
     está ligada para a área. Ela NÃO passa pelo MCP: é despachada aqui, e o primeiro uso
@@ -1261,8 +1272,12 @@ async def _run_tool_loop(session, tools, system_static, system_dynamic, user_msg
             metrics["tools_used"] += 1
             if is_write:
                 metrics["writes"] += 1
+                if not is_error and not denial:
+                    metrics["order_writes_ok"] = metrics.get("order_writes_ok", 0) + 1
             else:
                 metrics["reads"] += 1
+            if grounding is not None:
+                grounding.append(text or "")
 
             emit(
                 phase, "tool_call", actor="web" if is_web else "agent" if is_local else "mongodb",

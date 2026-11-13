@@ -36,6 +36,7 @@ from langgraph.graph import END, StateGraph
 from pymongo import MongoClient as SyncMongoClient
 
 import agent
+import answer_checks
 import cache
 import langfuse_tracing as tracing
 import memory
@@ -486,12 +487,13 @@ async def n_run_pipeline(state: TurnState, config) -> dict:
                        + budget_block + summary_block)
 
     emit_fn = lambda *a, **k: _emit(ctx, trace, *a, **k)  # noqa: E731
+    tool_texts: list[str] = []
     final_answer = await agent.run_loop_guarded(
         lambda: agent._run_tool_loop(
             session, tools, system_static, system_dynamic, user_msg, emit_fn,
             metrics, state["agent_model"], conversation_id, user_key, history=history,
             fallback_model=state["agent_fallback_model"], budget_brl=budget_brl,
-            web_cfg=web_cfg, area=state["area"],
+            web_cfg=web_cfg, area=state["area"], grounding=tool_texts,
         ),
         emit=emit_fn, metrics=metrics,
     )
@@ -503,6 +505,22 @@ async def n_run_pipeline(state: TurnState, config) -> dict:
         _emit(ctx, trace, "act", "guardrail", actor="guardrail", stage="output",
               action="mask", violations=guard_out["violations"],
               result="PII mascarada na resposta antes de enviar ao cliente.")
+
+    # Fidelidade da resposta (não bloqueia): ação afirmada sem escrita, prazo sem fonte.
+    grounding_text = "\n".join([system_static, system_dynamic, user_msg, *tool_texts,
+                                 *(str(h.get("content", "")) for h in (history or []))])
+    answer_flags = answer_checks.check(
+        final_answer, writes_ok=metrics.get("order_writes_ok", 0), grounding=grounding_text)
+    guard_out["answer_checks"] = answer_flags
+    if answer_flags:
+        metrics["answer_flags"] = len(answer_flags)
+        observability.metrics.bump("answer_flags", len(answer_flags))
+        _emit(ctx, trace, "act", "guardrail", actor="guardrail", stage="output",
+              action="flag", violations=answer_flags,
+              result="Resposta afirma ação ou prazo sem respaldo no turno "
+                     "(não bloqueia; auditado em guardrail_events).")
+        await guardrails.log_answer_flags(final_answer, answer_flags, user_key,
+                                          conversation_id, state["area"])
 
     turn_count = await agent._store_short_term(conversation_id, user_key, user_msg,
                                                 final_answer, emit_fn, metrics)
@@ -703,6 +721,7 @@ async def run_turn(session, *, scenario, user_msg, conversation_id, user_key,
             "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0,
             "memory_extractor_input_tokens": 0, "memory_extractor_output_tokens": 0,
             "memory_extraction_skipped": False,
+            "order_writes_ok": 0, "answer_flags": 0,
             "context_budget": {
                 "history_chars": agent.MAX_HISTORY_CHARS,
                 "memory_chars": memory.MAX_PROMPT_MEMORY_CHARS,

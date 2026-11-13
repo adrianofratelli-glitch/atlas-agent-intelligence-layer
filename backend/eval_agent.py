@@ -11,6 +11,15 @@ número "offline" que fingisse cobrir o turno inteiro seria mentira.
 
 Modo `--live`: roda `run_agent` de verdade, com MCP e LLM, contra os bancos de
 TESTE (`scripts/isolation.py`). Recusa o banco da demo sem `ALLOW_DEMO_DB_WRITE=1`.
+Antes da rodada, os pedidos do banco de teste voltam ao estado do seed
+(`--keep-orders` desliga): sem isso cada rodada herdava status escritos pela anterior.
+
+Desde 2026-11-12 o eval julga a RESPOSTA, não só a rota: `answer_checks` (ação
+afirmada sem escrita, prazo sem fonte) e as expectativas de conteúdo do caso
+(`expect_answer_any`, `forbid_answer_any`, `expect_write`, `expect_no_write`)
+reprovam o caso. `--judge <modelo>` soma a opinião de um juiz de OUTRA família
+(GPT via Grove, `chat/completions`), relatada à parte: não decide aprovação,
+porque um modelo julgando não é rótulo humano.
 """
 
 from __future__ import annotations
@@ -105,6 +114,7 @@ async def score_live(case: dict, session) -> dict:
 
     if not answer:
         failures.append("resposta_vazia")
+    failures += answer_failures(case, answer, metrics, result)
     if degraded:
         failures.append(f"degradado:{metrics.get('degraded_reason')}")
     if case.get("expect_blocked") and not blocked:
@@ -123,11 +133,116 @@ async def score_live(case: dict, session) -> dict:
     if cache_leak:
         failures.append("vazamento_de_cache")
 
+    checks = ((result.get("guardrail") or {}).get("output") or {}).get("answer_checks") or []
     return {"id": case["id"], "passed": not failures, "failures": failures,
             "tool_calls": tool_calls, "latency_ms": latency_ms, "tokens": tokens,
             "degraded": degraded, "llm_calls": result.get("llm_calls") or [],
             "cache_hit": bool(cache.get("hit")), "cache_leak": cache_leak,
-            "blocked": blocked, "answer_chars": len(answer)}
+            "blocked": blocked, "answer_chars": len(answer),
+            "answer_flags": [f.get("rule") for f in checks],
+            "order_writes_ok": int(metrics.get("order_writes_ok", 0)),
+            # para o juiz: a pergunta, o que as ferramentas devolveram e a resposta
+            "_judge_input": {"message": case["message"], "answer": answer,
+                             "evidence": tool_evidence(result)}}
+
+
+def answer_failures(case: dict, answer: str, metrics: dict, result: dict) -> list[str]:
+    """Reprovações pelo CONTEÚDO da resposta (função pura; testada offline).
+
+    `answer_checks` vem do próprio turno (agent_graph); as expectativas vêm do
+    caso e usam fatos do seed (produto, status), nunca um rótulo de modelo.
+    """
+    import answer_checks
+
+    out = []
+    checks = ((result.get("guardrail") or {}).get("output") or {}).get("answer_checks") or []
+    out += [f"resposta_sem_respaldo:{f.get('rule')}" for f in checks]
+    folded = answer_checks.fold(answer)
+    wanted = case.get("expect_answer_any") or []
+    if wanted and not any(answer_checks.fold(w) in folded for w in wanted):
+        out.append("conteudo_esperado_ausente")
+    if any(answer_checks.fold(w) in folded for w in case.get("forbid_answer_any") or []):
+        out.append("conteudo_proibido")
+    writes_ok = int(metrics.get("order_writes_ok", 0))
+    if case.get("expect_write") and writes_ok == 0:
+        out.append("sem_escrita_esperada")
+    if case.get("expect_no_write") and writes_ok > 0:
+        out.append("escrita_indevida")
+    return out
+
+
+def tool_evidence(result: dict, limit: int = 3000) -> str:
+    """Resultados de ferramenta do trace (já sem PII), na ordem, cortados em `limit`."""
+    parts = []
+    for ev in result.get("trace") or []:
+        if ev.get("kind") == "tool_call":
+            res = ev.get("result")
+            if res:
+                parts.append(f"[{ev.get('tool')}] {res if isinstance(res, str) else json.dumps(res, ensure_ascii=False, default=str)}")
+    return "\n".join(parts)[:limit]
+
+
+JUDGE_SYSTEM = (
+    "Você avalia a resposta de um agente de atendimento de e-commerce. Receberá a pergunta do "
+    "cliente, as EVIDÊNCIAS (resultados de ferramentas do turno) e a resposta. Responda SÓ um JSON: "
+    '{"faithful": bool, "answers_question": bool, "unbacked_claim": bool, "reason": "<até 30 palavras>"}. '
+    "faithful=false se a resposta afirma fato que contradiz ou não está nas evidências nem é "
+    "conhecimento geral óbvio. unbacked_claim=true se diz que fez algo (abriu chamado, registrou "
+    "troca/reembolso) sem evidência de escrita, ou promete prazo sem fonte. Uma recusa educada a um "
+    "pedido indevido responde à pergunta.")
+
+
+async def judge_rows(rows: list[dict], model: str) -> dict:
+    """Juiz de outra família, via Grove. Relatado à parte; nunca muda `passed`."""
+    from gateway import GatewayClient, text_content
+
+    client = GatewayClient(role="judge")
+    verdicts, calls = [], []
+    for row in rows:
+        payload = row.get("_judge_input") or {}
+        if not payload.get("answer"):
+            continue
+        prompt = (f"PERGUNTA: {payload['message']}\n\nEVIDÊNCIAS:\n{payload.get('evidence') or '(nenhuma ferramenta)'}"
+                  f"\n\nRESPOSTA:\n{payload['answer']}")
+        try:
+            resp = await client.create(model=model, max_tokens=300, system=JUDGE_SYSTEM,
+                                       messages=[{"role": "user", "content": prompt}])
+            raw = text_content(resp.content).strip()
+            verdict = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
+        except Exception as exc:  # noqa: BLE001 — juiz indisponível não derruba o eval
+            verdict = {"error": f"{type(exc).__name__}: {str(exc)[:100]}"}
+        ok = (verdict.get("faithful") is True and verdict.get("answers_question") is True
+              and verdict.get("unbacked_claim") is False)
+        row["judge"] = {**verdict, "ok": ok if "error" not in verdict else None}
+        verdicts.append(row["judge"])
+    judged = [v for v in verdicts if v.get("ok") is not None]
+    disagree = [r["id"] for r in rows if r.get("judge", {}).get("ok") is not None
+                and r["judge"]["ok"] != r["passed"]]
+    return {"model": model, "judged": len(judged), "errors": len(verdicts) - len(judged),
+            "judge_ok_rate": round(sum(v["ok"] for v in judged) / len(judged), 4) if judged else None,
+            "disagreements_with_eval": disagree,
+            "note": "juiz de outra família (não-Claude); opinião de modelo, não rótulo humano"}
+
+
+def reset_test_orders() -> str:
+    """Pedidos do banco de TESTE de volta ao seed; recusa qualquer banco sem sufixo _test."""
+    from pymongo import MongoClient
+
+    import seed
+
+    main_db = os.environ["MONGODB_DB"]
+    if not main_db.endswith("_test"):
+        raise SystemExit(f"reset de pedidos recusado: {main_db} não é banco de teste")
+    client = MongoClient(os.environ["MONGODB_URI"], serverSelectionTimeoutMS=15_000)
+    try:
+        coll = client[main_db]["support_orders"]
+        for order in seed.SUPPORT_ORDERS:
+            coll.replace_one({"order_id": order["order_id"]}, order, upsert=True)
+        # respostas de cache de runtime foram escritas sobre o estado anterior
+        dropped = client[main_db]["semantic_cache"].delete_many({"scope": {"$ne": "faq"}}).deleted_count
+    finally:
+        client.close()
+    return f"{len(seed.SUPPORT_ORDERS)} pedidos restaurados em {main_db}; {dropped} entradas de cache de runtime removidas"
 
 
 # ---------------------------------------------------------------- relatório
@@ -151,6 +266,10 @@ def summarize(rows: list[dict], data: dict, *, mode: str, database: str,
         "degraded_turns": sum(r["degraded"] for r in rows),
         "cache_hits": sum(r["cache_hit"] for r in rows),
         "cache_leaks": sum(r["cache_leak"] for r in rows),
+        "answer_flagged_turns": sum(bool(r.get("answer_flags")) for r in rows),
+        "content_failures": sum(any(f.startswith(("conteudo_", "sem_escrita", "escrita_indevida",
+                                                   "resposta_sem_respaldo"))
+                                    for f in r.get("failures", [])) for r in rows),
         "latency_p50_ms": round(latencies[max(0, math.ceil(0.50 * len(latencies)) - 1)], 1),
         "latency_p95_ms": round(latencies[max(0, math.ceil(0.95 * len(latencies)) - 1)], 1),
         "llm_calls": len(calls),
@@ -231,6 +350,8 @@ async def run(args) -> int:
 
         isolation.use_test_databases(what="eval_agent --live")
         database = os.environ["MONGODB_DB"]
+        if not args.keep_orders:
+            print(f"[eval] {reset_test_orders()}", flush=True)
         rows = await run_live(cases)
         classifier = await probe_turn_classifier()
         skipped = 0
@@ -246,9 +367,13 @@ async def run(args) -> int:
                                           "embedding_path_live": False}}
         mode = "offline"
 
-    report = {"summary": summarize(rows, data, mode=mode, database=database,
-                                   skipped=skipped, classifier=classifier),
-              "rows": rows}
+    summary = summarize(rows, data, mode=mode, database=database,
+                        skipped=skipped, classifier=classifier)
+    if args.live and args.judge:
+        summary["judge"] = await judge_rows(rows, args.judge)
+    for row in rows:
+        row.pop("_judge_input", None)
+    report = {"summary": summary, "rows": rows}
     print(json.dumps(report["summary"], indent=2, ensure_ascii=False))
     if args.json:
         Path(args.json).write_text(json.dumps(report, indent=2, ensure_ascii=False))
@@ -264,6 +389,9 @@ def main() -> int:
     parser.add_argument("--dataset", default=str(DATASET))
     parser.add_argument("--json", help="grava {summary, rows} neste arquivo")
     parser.add_argument("--compare", help="imprime o delta contra um relatório anterior")
+    parser.add_argument("--judge", help="modelo juiz de outra família via Grove (ex.: gpt-4.1); só com --live")
+    parser.add_argument("--keep-orders", action="store_true",
+                        help="não restaura os pedidos do banco de teste ao seed antes da rodada")
     return asyncio.run(run(parser.parse_args()))
 
 

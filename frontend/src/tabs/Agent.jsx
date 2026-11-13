@@ -775,6 +775,12 @@ function FeatureFlags({ run }) {
     guardClass = 'warn';
     guardTitle = '🛡️ Guardrails · PII mascarada';
     guardDetail = 'Dado sensível removido da resposta antes de enviar ao cliente.';
+  } else if (gOut?.answer_checks?.length) {
+    // Fidelidade da resposta (backend/answer_checks.py): não bloqueia, avisa.
+    guardClass = 'warn';
+    guardTitle = '🛡️ Guardrails · resposta sem respaldo';
+    const f = gOut.answer_checks[0];
+    guardDetail = `${f.rule}: "${f.detail}" — ação ou prazo citado sem escrita/fonte neste turno (auditado em guardrail_events).`;
   } else if (gIn.violations?.length) {
     guardClass = 'warn';
     guardTitle = '🛡️ Guardrails · alerta';
@@ -788,6 +794,8 @@ function FeatureFlags({ run }) {
     ? 'Não consultado (pedido bloqueado).'
     : cache.mode === 'bypass'
     ? 'Ignorado: turno pessoal (depende da memória do usuário) — nunca usa nem grava o cache compartilhado.'
+    : cache.mode === 'unavailable'
+    ? 'Índice vetorial do cache não consultável (ausente ou em construção): só o match exato foi tentado.'
     : `Melhor score ${cache.score ?? 0} < ${cache.threshold ?? 0.92}. ${cache.stored ? 'Resposta gravada no cache.' : ''}`;
   if (cache.hit) {
     cacheClass = 'hit';

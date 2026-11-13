@@ -42,10 +42,11 @@ Uma regra que importa não pode depender de o modelo obedecer ao texto do prompt
    com a regra 7b já dizendo "sem pedido informado, não cite número", o agente inventou outra lista
    ("PED-8901 – Fone Bluetooth Premium…"). `answer_checks.drop_ungrounded_orders` tira da resposta o
    item de lista ou a frase com o pedido inventado. Também tira a linha que só apresentava a lista,
-   como "você possui 4 pedidos:". No lugar entram os pedidos reais do dono
-   (`agent_graph._real_orders_text`, o mesmo `guidance.user_orders` da orientação de escopo, sem PII).
-   Quando o turno negou uma consulta ampla, entra só o pedido do número, porque listar ali desfaria a
-   política.
+   como "você possui 4 pedidos:". No lugar entra o pedido do número
+   (`agent_graph.ORDER_FALLBACK_TEXT`). A lista real do dono chegou a ser testada nessa posição.
+   Foi descartada porque, numa rodada final de 13/11, o pedido inventado apareceu também em "me manda a
+   lista de todos os pedidos" (`single-028`, sem ferramenta no turno). Listar ali desfaria a
+   política de um pedido por vez.
 5. O card da aba Agente mostra "Guardrails · promessa virou oferta" com a frase antes e depois.
 6. O eval julga a resposta entregue e expõe `answer_rewritten_turns` no resumo e
    `answer_rewrites` por caso: a taxa de 28/28 não esconde que o modelo ainda escreveu a promessa.

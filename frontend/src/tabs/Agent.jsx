@@ -783,7 +783,7 @@ function FeatureFlags({ run }) {
       ? '🛡️ Guardrails · pedido inventado removido'
       : '🛡️ Guardrails · promessa virou oferta';
     guardDetail = r.rule === 'pedido_sem_fonte'
-      ? `Pedido(s) citado(s) sem fonte no turno (${r.before}) saíram da resposta; entrou a lista real do cliente (original auditado em guardrail_events).`
+      ? `Pedido(s) citado(s) sem fonte no turno (${r.before}) saíram da resposta; o cliente recebe o pedido do número (original auditado em guardrail_events).`
       : `O modelo escreveu "${r.before}" sem escrita no pedido neste turno; o cliente recebeu "${r.after}" (original auditado em guardrail_events).`;
   } else if (gOut?.answer_checks?.length) {
     // Fidelidade da resposta (backend/answer_checks.py): não bloqueia, avisa.

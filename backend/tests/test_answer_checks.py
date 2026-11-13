@@ -231,11 +231,6 @@ class DropUngroundedOrderTests(unittest.TestCase):
                                                    replacement="R"), ("O PED-1003 chegou.", []))
 
 
-def asyncio_run(coro):
-    import asyncio
-    return asyncio.run(coro)
-
-
 class TurnWiringTests(unittest.TestCase):
     """agent_graph._answer_fidelity: o cliente recebe a oferta; trace e auditoria ficam com o original."""
 
@@ -278,26 +273,15 @@ class TurnWiringTests(unittest.TestCase):
         self.assertEqual(guard_out["answer_rewrites"], [])
         self.assertEqual([f["rule"] for f in guard_out["answer_checks"]], ["promessa_sem_escrita"])
 
-    def test_invented_orders_are_replaced_by_the_owner_real_orders(self):
+    def test_invented_orders_are_replaced_by_a_request_for_the_number(self):
         import agent_graph
-        import guidance
 
-        async def orders(user_key):
-            return [{"order_id": "PED-1001", "product_name": "Tour One", "status": "entregue"}]
-
-        with unittest.mock.patch.object(guidance, "user_orders", orders):
-            out, trace, metrics, guard_out, logged = self._run(DropUngroundedOrderTests.LIVE)
+        out, trace, metrics, guard_out, logged = self._run(DropUngroundedOrderTests.LIVE)
         self.assertNotIn("PED-8901", out)
-        self.assertIn("- PED-1001 — Tour One (status: entregue)", out)
-        self.assertEqual(guard_out["answer_checks"], [], "a lista real não é apontada como sem fonte")
+        self.assertIn(agent_graph.ORDER_FALLBACK_TEXT, out)
+        self.assertEqual(guard_out["answer_checks"], [], "o exemplo de formato não é apontado")
         self.assertEqual([r["rule"] for r in guard_out["answer_rewrites"]], ["pedido_sem_fonte"])
         self.assertIn("PED-8901", logged[0][1], "auditoria guarda o texto do modelo")
-
-    def test_broad_listing_denial_never_gets_a_list(self):
-        import agent_graph
-        out = asyncio_run(agent_graph._real_orders_text(
-            "cliente-demo", "[orientação da plataforma] NÃO liste os pedidos dele nesta resposta"))
-        self.assertNotIn("PED-1", out)
 
     def test_write_in_the_turn_leaves_the_answer_alone(self):
         out, trace, _, guard_out, logged = self._run(SINGLE_005, writes_ok=1)

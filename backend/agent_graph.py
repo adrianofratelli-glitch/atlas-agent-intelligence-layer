@@ -375,17 +375,7 @@ async def _memory_relevance(user_msg: str, personal_turn: bool) -> dict | None:
         return None
 
 
-async def _real_orders_text(user_key: str, grounding: str) -> str:
-    """O que entra no lugar de pedidos inventados: os pedidos reais do dono."""
-    import guidance
-
-    if "nao liste os pedidos" in answer_checks.fold(grounding):
-        return "Para consultar um pedido, me informe o número dele (formato PED-0000)."
-    orders = await guidance.user_orders(user_key)
-    if not orders:
-        return ("Não encontrei pedidos registrados para você. Se tiver o número de um "
-                "pedido, me envie.")
-    return "Seus pedidos registrados:\n" + guidance._format_orders(orders)
+ORDER_FALLBACK_TEXT = "Para consultar um pedido, me informe o número dele (formato PED-0000)."
 
 
 async def _answer_fidelity(ctx: dict, trace: list, metrics: dict, guard_out: dict,
@@ -395,7 +385,7 @@ async def _answer_fidelity(ctx: dict, trace: list, metrics: dict, guard_out: dic
 
     Ação afirmada sem escrita vira OFERTA antes de chegar ao cliente (ADR-014; o texto
     do modelo continua no evento `reasoning` do trace e na auditoria). Pedido citado sem
-    fonte sai da resposta e dá lugar aos pedidos reais do dono. O que sobrar (prazo sem
+    fonte sai da resposta e dá lugar ao pedido do número. O que sobrar (prazo sem
     fonte) é apontado e não bloqueia. Preenche `guard_out["answer_rewrites"]`
     e `guard_out["answer_checks"]` (este já sobre o texto entregue)."""
     writes_ok = metrics.get("order_writes_ok", 0)
@@ -412,10 +402,12 @@ async def _answer_fidelity(ctx: dict, trace: list, metrics: dict, guard_out: dic
                          "(o cliente não recebe promessa falsa; original auditado).")
             await guardrails.log_answer_flags(original_answer, rewrites, user_key,
                                               conversation_id, area, action="rewrite")
-        # Pedido inventado: o trecho sai e entra a lista REAL do dono (ou o pedido do número
-        # quando o turno negou uma consulta ampla: listar ali desfaria a política).
+        # Pedido inventado: o trecho sai e entra o pedido do número.
         if answer_checks.ungrounded_orders(final_answer, grounding=grounding):
-            replacement = await _real_orders_text(user_key, grounding)
+            # Nada de lista no lugar: medido (single-028, 13/11), o pedido inventado aparece
+            # justamente quando o cliente pede uma listagem ampla, e listar ali desfaria a
+            # política de "um pedido por vez". O cliente diz o número; o agente consulta.
+            replacement = ORDER_FALLBACK_TEXT
             before = final_answer
             final_answer, dropped = answer_checks.drop_ungrounded_orders(
                 final_answer, grounding=grounding, replacement=replacement)
@@ -429,7 +421,7 @@ async def _answer_fidelity(ctx: dict, trace: list, metrics: dict, guard_out: dic
                 _emit(ctx, trace, "act", "guardrail", actor="guardrail", stage="output",
                       action="rewrite", violations=[change],
                       result=f"Pedido(s) sem fonte no turno removido(s) da resposta "
-                             f"({', '.join(dropped)}); entrou a lista real do cliente.")
+                             f"({', '.join(dropped)}); o cliente recebe o pedido do número.")
                 await guardrails.log_answer_flags(before, [change], user_key,
                                                   conversation_id, area, action="rewrite")
     guard_out["answer_rewrites"] = rewrites

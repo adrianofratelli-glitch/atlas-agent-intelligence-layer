@@ -58,7 +58,7 @@ Dockerfile, docker/, nginx.conf   Empacotamento
 docs/                         adr/ (decisões), briefing/, eval-report.md, chaos-report.md, memoria-agentica-mongodb.md
 ```
 
-Observação: o MCP Server do MongoDB (`mongodb-mcp-server`, versão fixada em `backend/agent.py:942`) não está neste repositório. É lançado via `npx` por `agent.py::mcp_server_params` (linha 945) e é por ele que o agente consulta os pedidos.
+Observação: o MCP Server do MongoDB (`mongodb-mcp-server`, versão fixada em `backend/agent.py:944`) não está neste repositório. É lançado via `npx` por `agent.py::mcp_server_params` (linha 947) e é por ele que o agente consulta os pedidos.
 
 ## 2. "Apertei o botão X, o que roda?"
 
@@ -74,8 +74,8 @@ Todas as chamadas passam por `frontend/src/api.js` (objeto `api`, linha 79). A i
 | Aba 2: lista de modelos | `ModelSwap.jsx:69` | `GET /api/models` | `main.py:634` `available_models` | `gateway.model_catalog()` | nenhum |
 | Aba 2: "Perguntar" | `ModelSwap.jsx:87` `ask` | `POST /api/chat/quick` | `main.py:707` `quick_chat` | guardrail -> `cache.lookup` -> `llm.call_with_fallback` -> `cache.store` | ver `cache.py::lookup`, `llm.py::get_active_config`, `cache.py::store` (seção 3) |
 | Aba 3: escolher usuário | `Agent.jsx:435` `switchUser` | `POST /api/auth/token`, `GET /api/agent/scenarios` | `main.py:827` `auth_token`, `main.py:853` `agent_scenarios` | `auth.issue_token`; chips por área em `agent.py:654` `AREA_SCENARIOS` | `profiles.py::get_user` (`app_users`) |
-| Aba 3: lista de usuários / ferramentas / roteiro | `Agent.jsx:179-181` | `GET /api/users`, `/api/agent/tools`, `/api/agent/playlist` | `main.py:845`, `main.py:878`, `main.py:872` | `profiles.list_users`, `agent.list_agent_tools` (`agent.py:955`), `DEMO_PLAYLIST` (`agent.py:884`) | `app_users`, `area_profiles`, `tool_registry` |
-| Aba 3: chip de pergunta, caixa de texto + enviar, "Consolidar" | `Agent.jsx:727` / `Agent.jsx:405` `send` -> `Agent.jsx:345` `runScenario` | `POST /api/agent/run/stream` (SSE; `api.js:agentRunStream`) | `main.py:999` `agent_run_stream` -> `run_agent_resilient` (`main.py:168`) | `agent.py:1469` `run_agent` -> `agent_graph.py:686` `run_turn` (detalhe abaixo) | vários, ver abaixo |
+| Aba 3: lista de usuários / ferramentas / roteiro | `Agent.jsx:179-181` | `GET /api/users`, `/api/agent/tools`, `/api/agent/playlist` | `main.py:845`, `main.py:878`, `main.py:872` | `profiles.list_users`, `agent.list_agent_tools` (`agent.py:957`), `DEMO_PLAYLIST` (`agent.py:884`) | `app_users`, `area_profiles`, `tool_registry` |
+| Aba 3: chip de pergunta, caixa de texto + enviar, "Consolidar" | `Agent.jsx:727` / `Agent.jsx:405` `send` -> `Agent.jsx:345` `runScenario` | `POST /api/agent/run/stream` (SSE; `api.js:agentRunStream`) | `main.py:999` `agent_run_stream` -> `run_agent_resilient` (`main.py:168`) | `agent.py:1487` `run_agent` -> `agent_graph.py:686` `run_turn` (detalhe abaixo) | vários, ver abaixo |
 | Aba 3: "Demo automática", pausar, continuar, encerrar | `Agent.jsx:312`, `321`, `329`, `336` | mesma `/api/agent/run/stream`, um turno por passo de `DEMO_PLAYLIST` | idem | idem | idem |
 | Aba 3: "Nova conversa" | `Agent.jsx:422` | nenhuma (novo `conversation_id` no navegador) | n/a | n/a | n/a |
 | Aba 3: Reset / Anterior / Próximo / play (replay do trace) | `Agent.jsx:412`, `449`, `508-522` | nenhuma | n/a | só reexibe o trace já recebido | nenhum |
@@ -101,7 +101,7 @@ O turno é o grafo de `backend/agent_graph.py` (montado em `_build_graph`, linha
 | `n_cache_store` (573) | Grava a resposta no cache só se for genérica | `semantic_cache` `insert_one` (`cache.py:234`) |
 | `n_finalize` (627) | Recarrega a memória para o trace e fecha o turno | `agent_memory` `find` (`memory.load_longterm`) |
 
-O loop de ferramentas é `agent.py::_run_tool_loop` (linha 1086). O modelo só enxerga `find`, `aggregate` e `update-many` (allowlist em `agent.py:147-151`). Antes de cada chamada, `_read_denial` (448) e `_write_denial` (390) negam ou **reescrevem** o que o modelo pediu; depois a chamada vai ao MCP por `session.call_tool` (`agent.py:1237`) e a consulta contra `support_orders` / `produtos_vector` é executada pelo MCP Server, não pelo código Python da PoV. A cadeia de trocas usa o pipeline fixo de `graph.py:20` (`$graphLookup`), injetado em `agent.py:498`. A ferramenta externa `web_search` (`agent.py:1211`) roda `web_search.run` (`web_search.py:180`).
+O loop de ferramentas é `agent.py::_run_tool_loop` (linha 1088). O modelo só enxerga `find`, `aggregate` e `update-many` (allowlist em `agent.py:147-151`). Antes de cada chamada, `_read_denial` (448) e `_write_denial` (390) negam ou **reescrevem** o que o modelo pediu; depois a chamada vai ao MCP por `session.call_tool` (`agent.py:1239`) e a consulta contra `support_orders` / `produtos_vector` é executada pelo MCP Server, não pelo código Python da PoV. A cadeia de trocas usa o pipeline fixo de `graph.py:20` (`$graphLookup`), injetado em `agent.py:498`. A ferramenta externa `web_search` (`agent.py:1213`) roda `web_search.run` (`web_search.py:180`).
 
 ## 3. Onde estão as queries MongoDB
 
@@ -171,8 +171,8 @@ Nota: `seed.py` define os índices `semantic_cache_vs`, `guardrail_denylist_vs`,
 ## 5. "Quero mexer em..." (atalhos)
 
 - Texto/visual de uma aba -> `frontend/src/tabs/FlexibleSchema.jsx`, `ModelSwap.jsx` ou `Agent.jsx`.
-- Perguntas sugeridas (chips) -> `AREA_SCENARIOS` em `backend/agent.py:660`.
-- Roteiro da demo automática -> `DEMO_PLAYLIST` em `backend/agent.py:890`.
+- Perguntas sugeridas (chips) -> `AREA_SCENARIOS` em `backend/agent.py:662`.
+- Roteiro da demo automática -> `DEMO_PLAYLIST` em `backend/agent.py:892`.
 - Prompt do agente (instruções de sistema) -> `_SYSTEM_TEMPLATE` em `backend/agent.py` (renderizado por `_render_system`, 638, em `SYSTEM`, 649). Os `prompt_templates` do Mongo (`seed.py:33`) alimentam a aba 1 e o chat da aba 2.
 - Persona/política por área -> `AREA_PROFILES` (`seed.py:472`) e `GUARDRAIL_POLICY` (`seed.py:555`), depois rodar o seed.
 - Frases proibidas do guardrail -> `GUARDRAIL_DENYLIST` em `backend/seed.py:619`.

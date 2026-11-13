@@ -127,3 +127,22 @@ class EvalAnswerFailureTests(unittest.TestCase):
         trace = [{"phase": "retrieve", "kind": "tool_call", "tool": "find", "result": "PED-1003 em_transito"},
                  {"phase": "act", "kind": "message", "text": "resposta"}]
         self.assertEqual(eval_agent.tool_evidence({"trace": trace}), "[find] PED-1003 em_transito")
+
+
+class WriteTookEffectTests(unittest.TestCase):
+    """`order_writes_ok` só conta update-many que casou um pedido (texto do MCP 2.1.0)."""
+
+    def test_formats_of_the_mcp_server(self):
+        import agent
+        cases = {
+            "Matched 1 document(s). Modified 1 document(s).": True,
+            "Matched 1 document(s). Modified 0 document(s).": True,   # já estava no status
+            "Matched 0 document(s).": False,
+            "No documents matched the filter.": False,
+            "Updated 0": False,                                      # formato desconhecido
+            "": False,
+            None: False,
+        }
+        for text, expected in cases.items():
+            with self.subTest(text=text):
+                self.assertIs(agent.write_took_effect(text), expected)

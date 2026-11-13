@@ -25,7 +25,8 @@ isso os cenários passavam.
 1. `backend/search_readiness.py`: `queryable(coll, índice)` consulta `list_search_indexes(nome)` e
    devolve `True` (campo `queryable: true`, ou `status: READY` quando o campo não vem), `False`
    (ausente, `BUILDING`, `FAILED`…) ou `None` (a própria listagem falhou). Cache por
-   (banco, coleção, índice): 60 s quando pronto, 5 s quando não.
+   (banco, coleção, índice): 60 s quando pronto, 5 s quando não pronto, 60 s quando a listagem
+   falhou (`None`: repetir a cada busca vazia só somaria latência a um turno que já falha fechado).
 2. **Só no vazio**: denylist, classificador e cache consultam o estado apenas quando a busca volta
    vazia. O caminho feliz não ganha ida ao Atlas.
    * denylist: vazio + não `True` → camada indisponível (o fail mode da área decide);

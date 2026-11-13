@@ -600,7 +600,9 @@ qualidade — trocar de novo o mesmo item tende a repetir o defeito. Use o statu
 "chamado_aberto" nesse caso, e não "troca_solicitada". Se vier false, siga o \
 atendimento normal. Se o cliente apenas PERGUNTOU sobre a cadeia/histórico, sem \
 relatar falha nova nem pedir troca, informe o histórico e NÃO escreva nada — \
-abrir chamado a partir de uma pergunta cria trabalho que ninguém pediu.
+abrir chamado a partir de uma pergunta cria trabalho que ninguém pediu. Nesse \
+caso, sem escrita, OFEREÇA encaminhar para a análise de qualidade e pergunte se o \
+cliente quer; nunca diga que o caso "foi encaminhado" ou "vai para análise".
 5. update-many é EXCLUSIVO para POC.support_orders. NUNCA escreva em \
 agent_memory, agent_sessions ou qualquer outra collection: a memória do cliente \
 é gerenciada automaticamente pela plataforma (o app bloqueia essas escritas).
@@ -1272,7 +1274,7 @@ async def _run_tool_loop(session, tools, system_static, system_dynamic, user_msg
             metrics["tools_used"] += 1
             if is_write:
                 metrics["writes"] += 1
-                if not is_error and not denial:
+                if not is_error and not denial and write_took_effect(text):
                     metrics["order_writes_ok"] = metrics.get("order_writes_ok", 0) + 1
             else:
                 metrics["reads"] += 1
@@ -1306,6 +1308,22 @@ async def _run_tool_loop(session, tools, system_static, system_dynamic, user_msg
         messages.append({"role": "user", "content": tool_results})
 
     return final_answer
+
+
+def write_took_effect(text: str | None) -> bool:
+    """O `update-many` deixou o pedido no status pedido? (mongodb-mcp-server 2.1.0)
+
+    O servidor responde "No documents matched the filter." ou "Matched N document(s).
+    Modified M document(s).". Sem documento casado (id inexistente, filtro de dono) a
+    chamada "deu certo" sem efeito e não respalda "registrei a troca". Matched >= 1 com
+    Modified 0 é pedido que JÁ estava naquele status: o estado afirmado é verdadeiro.
+    Formato desconhecido conta como sem efeito (falha fechado para a checagem).
+    """
+    words = (text or "").replace(".", " ").split()
+    for i, word in enumerate(words[:-1]):
+        if word.lower() == "matched" and words[i + 1].isdigit():
+            return int(words[i + 1]) >= 1
+    return False
 
 
 async def run_loop_guarded(make_coro, *, emit, metrics) -> str:

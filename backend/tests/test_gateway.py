@@ -12,6 +12,29 @@ class GatewayTests(unittest.IsolatedAsyncioTestCase):
         p=patch.dict(os.environ); p.start(); self.addCleanup(p.stop)
         os.environ.pop('LLM_BLENDED_PRICES',None); os.environ.pop('LLM_LIST_PRICES',None)
 
+    async def test_openai_path_sends_bearer_and_real_key_in_x_api_key(self):
+        # Gateway Grove atual: Bearer + chave real em x-api-key (placeholder dá 401).
+        os.environ['GROVE_CHAT_COMPLETIONS_URL'] = 'https://gateway.example.mongodb.com/v1/chat/completions'
+        os.environ['GROVE_API_KEY'] = 'chave-de-teste'
+        sent = {}
+
+        class FakeResponse:
+            def raise_for_status(self): pass
+            def json(self): return {'choices': []}
+
+        class FakeClient:
+            def __init__(self, *a, **k): pass
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): return False
+            async def post(self, url, headers=None, json=None):
+                sent.update(url=url, headers=headers)
+                return FakeResponse()
+
+        with patch.object(gw.httpx, 'AsyncClient', FakeClient):
+            await gw.openai_request({'model': 'gpt-4.1', 'messages': []})
+        self.assertEqual(sent['headers']['Authorization'], 'Bearer chave-de-teste')
+        self.assertEqual(sent['headers']['x-api-key'], 'chave-de-teste')
+
     def test_rates_and_usage(self):
         record=gw.new_record('gpt-5.6-luna','test')
         gw.finish_record(record, __import__('time').perf_counter(), {'prompt_tokens':100,'completion_tokens':20,'prompt_tokens_details':{'cached_tokens':40}}, True)

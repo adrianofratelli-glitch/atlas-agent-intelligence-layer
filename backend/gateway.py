@@ -101,7 +101,8 @@ async def openai_request(body):
     if not key:
         raise ValueError('GROVE_API_KEY is required for Grove OpenAI models')
     async with httpx.AsyncClient(timeout=float(os.getenv('LLM_TIMEOUT_SECONDS', '45')), follow_redirects=False) as client:
-        response = await client.post(url, headers={'Authorization': f'Bearer {key}'}, json=body)
+        # Regra do gateway Grove atual: Bearer E a chave real em x-api-key (placeholder = 401).
+        response = await client.post(url, headers={'Authorization': f'Bearer {key}', 'x-api-key': key}, json=body)
         response.raise_for_status()
         return response.json()
 

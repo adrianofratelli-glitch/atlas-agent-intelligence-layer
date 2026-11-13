@@ -167,7 +167,7 @@ rows = await cursor.to_list(length=None)
 Medido em 2026-11-12: `$vectorSearch` em índice inexistente devolve `[]` sem erro. Por isso o
 vazio da denylist (3.2), do classificador de turno e do cache (3.1) só é aceito como "nada
 parecido" com o índice consultável, e a memória (3.3/3.4) confere os dois índices antes da
-fusão. Cache do estado: 60 s pronto, 5 s não pronto. Decisão: ADR-013.
+fusão. Cache do estado: 60 s pronto, 5 s não pronto, 60 s se a listagem falhou. Decisão: ADR-013.
 
 ## 4. `$graphLookup` — travessia da cadeia de trocas (`backend/graph.py`)
 

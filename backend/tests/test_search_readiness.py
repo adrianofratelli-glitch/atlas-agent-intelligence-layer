@@ -253,3 +253,17 @@ class ChaosIndexEmptyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnknownTtlTests(unittest.TestCase):
+    def setUp(self):
+        sr.reset()
+
+    def test_failed_listing_is_cached_for_a_minute(self):
+        coll = FakeColl(error=RuntimeError("sem permissão"))
+        with mock.patch.object(sr, "_clock", side_effect=[100.0, 130.0, 161.0]):
+            self.assertIsNone(run(sr.queryable(coll, "ix")))
+            self.assertIsNone(run(sr.queryable(coll, "ix")))
+            self.assertEqual(coll.calls, 1, "30 s depois ainda vale o cache")
+            run(sr.queryable(coll, "ix"))
+            self.assertEqual(coll.calls, 2, "passado 1 min, tenta listar de novo")

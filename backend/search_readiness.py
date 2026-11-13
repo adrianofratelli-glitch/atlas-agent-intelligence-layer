@@ -15,7 +15,8 @@ dispara nesse caso, e o chamador lê o vazio como "nada parecido":
 A regra (ADR-013): quando a busca volta vazia, quem decide se o vazio é
 verdadeiro é `list_search_indexes` — `queryable: true` (ou `status: READY` nas
 versões que não trazem o campo). O resultado fica em cache curto: pronto por
-60 s, não pronto por 5 s (para perceber logo que o índice ficou pronto).
+60 s, não pronto por 5 s (para perceber logo que o índice ficou pronto),
+desconhecido (listagem falhou) por 60 s.
 """
 
 from __future__ import annotations
@@ -27,6 +28,9 @@ logger = logging.getLogger("poc.search_readiness")
 
 READY_TTL_S = 60.0
 NOT_READY_TTL_S = 5.0
+# Listagem que falhou (permissão, rede): repetir a cada busca vazia só soma latência
+# a um turno que já vai falhar fechado; tenta de novo depois de um minuto.
+UNKNOWN_TTL_S = 60.0
 
 # (db, collection, índice) -> (expira_em, estado)
 _cache: dict[tuple[str, str, str], tuple[float, bool | None]] = {}
@@ -86,7 +90,7 @@ async def queryable(coll, index: str) -> bool | None:
         logger.warning("list_search_indexes falhou para %s.%s/%s: %s",
                        key[0], key[1], index, exc)
         state = None
-    ttl = READY_TTL_S if state else NOT_READY_TTL_S
+    ttl = READY_TTL_S if state else UNKNOWN_TTL_S if state is None else NOT_READY_TTL_S
     _cache[key] = (now + ttl, state)
     if state is False:
         logger.warning("índice %s em %s.%s não está consultável (ausente ou em construção): "

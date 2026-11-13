@@ -180,6 +180,20 @@ def ungrounded_deadlines(answer: str, *, grounding: str) -> list[dict]:
 
 
 _ORDER_ID_RE = re.compile(r"\bPED-\d{3,6}\b", re.IGNORECASE)
+# Número citado como EXEMPLO de formato ("me envie o número (ex.: PED-0001, PED-0002)")
+# não afirma que o pedido existe. Medido em 2026-11-13 (`single-028`): tratá-lo como
+# inventado cortava a frase de pedido do número e deixava marcação solta na resposta.
+_EXAMPLE_BEFORE_RE = re.compile(r"\b(?:ex|exemplo|formato|como por exemplo|tipo)\b")
+
+
+def _order_mentions(text: str) -> list[str]:
+    """`PED-…` citados como pedido (exclui os que vêm logo depois de "ex.", "formato"…)."""
+    out = []
+    for m in _ORDER_ID_RE.finditer(text or ""):
+        if _EXAMPLE_BEFORE_RE.search(fold(text[max(0, m.start() - 30):m.start()])):
+            continue
+        out.append(m.group(0).upper())
+    return out
 
 
 def ungrounded_orders(answer: str, *, grounding: str) -> list[dict]:
@@ -193,8 +207,7 @@ def ungrounded_orders(answer: str, *, grounding: str) -> list[dict]:
     fora disso, o número foi inventado."""
     source = {m.upper() for m in _ORDER_ID_RE.findall(grounding or "")}
     out, seen = [], set()
-    for m in _ORDER_ID_RE.findall(answer):
-        oid = m.upper()
+    for oid in _order_mentions(answer):
         if oid in source or oid in seen:
             continue
         seen.add(oid)
@@ -220,7 +233,7 @@ def drop_ungrounded_orders(answer: str, *, grounding: str,
     source = {m.upper() for m in _ORDER_ID_RE.findall(grounding or "")}
 
     def bad(text: str) -> list[str]:
-        return [m.upper() for m in _ORDER_ID_RE.findall(text) if m.upper() not in source]
+        return [oid for oid in _order_mentions(text) if oid not in source]
 
     if not bad(answer):
         return answer, []

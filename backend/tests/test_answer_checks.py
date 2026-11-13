@@ -217,6 +217,15 @@ class DropUngroundedOrderTests(unittest.TestCase):
             grounding="PED-1003", replacement="R")
         self.assertEqual((text, ids), ("O PED-1003 está em trânsito. Algo mais?\nR", ["PED-9999"]))
 
+    def test_format_examples_are_not_invented_orders(self):
+        """`single-028`, 2026-11-13: "(Ex.: PED-0001, PED-0002)" é formato, não pedido."""
+        for text in ("**Qual o número do pedido?** (Ex.: PED-0001, PED-0002)",
+                     "Envie no formato PED-0000.", "Por exemplo: PED-1234."):
+            with self.subTest(text=text):
+                self.assertEqual(ac.check(text, writes_ok=0, grounding=""), [])
+                self.assertEqual(ac.drop_ungrounded_orders(text, grounding="", replacement="R"),
+                                 (text, []))
+
     def test_nothing_invented_nothing_changes(self):
         self.assertEqual(ac.drop_ungrounded_orders("O PED-1003 chegou.", grounding="ped-1003",
                                                    replacement="R"), ("O PED-1003 chegou.", []))

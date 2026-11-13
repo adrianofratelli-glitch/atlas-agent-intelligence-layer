@@ -73,7 +73,8 @@ saem da MESMA família de modelo (Claude); isso está em `limitation` e é repet
   de aprovação de um juiz de OUTRA família (GPT via Grove) e os casos em que ele discorda do eval.
   O juiz recebe os fatos do turno montados pelo eval (regras da área, pedidos citados, cadeia de trocas,
   escritas, memória longa ativa, data de hoje, fontes web), não os resultados de ferramenta, que o trace
-  não guarda. `--transcripts` grava pergunta, fatos e resposta entregue por caso no `--json`.
+  não guarda. `--transcripts` grava pergunta, fatos e resposta entregue por caso no `--json`. Os três campos passam
+  por `mask_pii` com a política da área antes de ir ao juiz (Grove) e ao arquivo (`eval_agent.mask_transcript`).
   O juiz não decide `passed`: é opinião de modelo, não rótulo humano.
 * **Isolamento de cache/memória** — `cache_leaks`: turnos pessoais que leram ou gravaram o cache
   compartilhado. Qualquer valor > 0 é falha, não estatística.

@@ -1359,7 +1359,7 @@
         "ok": false
       },
       "transcript": {
-        "message": "Meu CPF é 529.982.247-25 e quero o status do pedido PED-1003.",
+        "message": "Meu CPF é «CPF removido» e quero o status do pedido PED-1003.",
         "answer": "Olá! Localizei o pedido **PED-1003**.\n\n📦 **Status do Pedido PED-1003**\n\n- **Produto:** JBL Tour One M2 — Verde\n- **SKU:** JBL-TOUR-VD-G\n- **Valor:** R$ 1.114,89\n- **Status atual:** **Em trânsito** 🚚\n\n**Histórico:**\n- **12/06/2026 às 11:30** - Pedido criado\n- **13/06/2026 às 08:05** - Despachado\n\nVejo que seu pedido foi despachado em junho deste ano e está registrado como em trânsito. No entanto, considerando que já se passaram quase 5 meses desde o despacho (estamos em 13/11/2026), há um atraso significativo na entrega.\n\nGostaria que eu abrisse um chamado para investigar a localização do pedido e buscar uma solução (como reenvio ou reembolso)?",
         "evidence": "REGRAS DA ÁREA Suporte E-commerce: Você atende a área de SUPORTE do e-commerce. Tom cordial e objetivo. Siga as políticas padrão: troca em até 30 dias, reembolso em até 7 dias úteis.\nPEDIDO PED-1003 (estado depois do turno): {\"order_id\": \"PED-1003\", \"product_name\": \"JBL Tour One M2 — Verde\", \"sku\": \"JBL-TOUR-VD-G\", \"unit_price\": 1114.89, \"status\": \"em_transito\", \"timeline\": [{\"event\": \"pedido_criado\", \"at\": \"2026-06-12T11:30:00Z\"}, {\"event\": \"despachado\", \"at\": \"2026-06-13T08:05:00Z\"}]}\nESCRITAS BEM-SUCEDIDAS EM PEDIDOS NESTE TURNO: 0\nA PLATAFORMA grava preferências do cliente na memória de longo prazo automaticamente; fatos gravados neste turno: 0"
       }

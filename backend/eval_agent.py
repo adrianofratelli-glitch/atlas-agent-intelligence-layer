@@ -148,9 +148,29 @@ async def score_live(case: dict, session) -> dict:
                                 for r in ((result.get("guardrail") or {}).get("output") or {})
                                 .get("answer_rewrites") or []],
             "order_writes_ok": int(metrics.get("order_writes_ok", 0)),
-            # para o juiz: a pergunta, o que as ferramentas devolveram e a resposta
-            "_judge_input": {"message": case["message"], "answer": answer,
-                             "evidence": await judge_context(case, result, metrics)}}
+            # para o juiz: a pergunta, os fatos do turno e a resposta — MASCARADOS pela política
+            # da área antes de sair do processo (Grove) e antes do --transcripts (repo público)
+            "_judge_input": await mask_transcript(
+                {"message": case["message"], "answer": answer,
+                 "evidence": await judge_context(case, result, metrics)},
+                areas=[(result.get("profile") or {}).get("area") or "default"])}
+
+
+async def mask_transcript(payload: dict, *, areas: list[str]) -> dict:
+    """Mascara PII de cada campo de texto com a política de cada área dada.
+
+    Os fatos da memória longa, a pergunta (o caso `single-023` traz um CPF) e as
+    regras da área iam ao juiz no Grove e aos transcripts versionados em claro (achado
+    da revisão de 2026-11-13). Mais de uma área = união das máscaras: a mais rígida vence."""
+    import policy_guardrails as guardrails
+
+    out = {}
+    for key, value in payload.items():
+        if isinstance(value, str):
+            for area in areas:
+                value = await guardrails.mask_pii(value, area)
+        out[key] = value
+    return out
 
 
 def answer_failures(case: dict, answer: str, metrics: dict, result: dict) -> list[str]:

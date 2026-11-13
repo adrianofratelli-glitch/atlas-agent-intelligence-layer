@@ -45,8 +45,9 @@ cd backend && .venv/bin/python eval_agent.py --live --judge gpt-4.1 \
 | Rodada | Resolução | Reprovados | Por conteúdo | `answer_checks` | Degradados | Vazamentos de cache | p50 / p95 | Custo |
 |---|---|---|---|---|---|---|---|---|
 | 22/09 (v1) | 96,4% (27/28) | `single-010` (diluição) | não medido | não existia | 0 | 0 | 12,7 s / 26,9 s | US$ 0,396 |
-| 12/11, 1ª (v2) | 96,4% (27/28) | `single-005`: `promessa_sem_escrita` | 1 | 1 | 0 | 0 | — | — |
-| 12/11, 2ª (v2, relatório versionado) | 96,4% (27/28) | `single-009`: `NetworkTimeout` do Atlas (infra) | 0 | 0 | 1 | 0 | 13,7 s / 27,3 s | US$ 0,450 (`cost_complete`) |
+| 12/11, 1ª (v2, `eval/reports/live-2026-11-12-r1.json`, reconstruído do log) | 96,4% (27/28) | `single-005`: `promessa_sem_escrita` | 1 | 1 | 0 | 0 | — | — |
+| 12/11, 2ª (v2, `live-2026-11-12.json`) | 96,4% (27/28) | `single-009`: `NetworkTimeout` do Atlas (infra) | 0 | 0 | 1 | 0 | 13,7 s / 27,3 s | US$ 0,450 (`cost_complete`) |
+| 12/11, 3ª (v2 + regra 4b revista, `live-2026-11-12-r3.json`) | 96,4% (27/28) | `single-005`: `promessa_sem_escrita` | 1 | 1 | 0 | 0 | 13,6 s / 27,4 s | US$ 0,482 (`cost_complete`) |
 
 Leitura:
 
@@ -54,13 +55,21 @@ Leitura:
   intenção); o relatório de 22/09 é anterior a isso.
 * **O que a v1 não via:** na 1ª rodada, para "O PED-1005 já foi reposto quantas vezes?", o agente
   respondeu que o caso "foi encaminhado à análise de qualidade" e que entrariam em contato, sem
-  nenhuma escrita no turno. `answer_checks` reprovou e o juiz de outra família concordou. Na 2ª
-  rodada a mesma pergunta não gerou a promessa: é variância do modelo, e a checagem existe
-  justamente para pegá-la quando acontece. Antes da regra 4a, numa consulta de status ao vivo o
+  nenhuma escrita no turno. `answer_checks` reprovou e o juiz de outra família concordou. A causa
+  estava no prompt, não no acaso: a regra 4b mandava dizer "o caso vai para análise de qualidade"
+  ao achar `needs_quality_review`, e a ressalva de "não escrever" quando o cliente só pergunta não
+  dizia o que falar no lugar. Na 2ª rodada a mesma pergunta não gerou a promessa, mas isso não
+  provava correção. A regra 4b agora manda **oferecer** o encaminhamento quando não há escrita.
+  **Confirmação (3ª rodada + 2 turnos avulsos): a correção é parcial.** O agente passou a terminar
+  com a pergunta ("Posso abrir esse chamado de análise de qualidade para você agora?"), mas em 2 de
+  3 respostas ainda escreveu antes "Vou encaminhar seu caso para análise de qualidade". A checagem
+  pega essa frase toda vez (a outra resposta, só com a oferta, passou limpa). O prompt reduz o
+  problema, não o elimina: por isso a checagem determinística fica, e o caso segue reprovando quando
+  a promessa aparece. Antes da regra 4a, numa consulta de status ao vivo o
   agente também prometeu "abrir um chamado… retorno em até 24 horas úteis" sem escrita.
 * **A única reprovação da 2ª rodada é infraestrutura** (conexão com o cluster compartilhado
   resetada no meio do turno), não comportamento do agente.
-* **Juiz `gpt-4.1`: 18/27 (66,7%)**, discordando do eval em 9 casos. Na 1ª rodada ele só via os
+* **Juiz `gpt-4.1`: 18/27 (66,7%) na 2ª rodada, 19/28 (67,9%) na 3ª**, discordando do eval em 9 casos. Na 1ª rodada ele só via os
   resultados de ferramenta, que o trace não guarda (protegidos), e aprovou 12/28. Na 2ª recebeu os
   fatos montados pelo eval (regras da área, pedidos citados sem PII, escritas, memória gravada).
   As discordâncias restantes são, em sua maioria, falta de contexto do juiz, não erro do agente:
@@ -69,7 +78,7 @@ Leitura:
   qualquer conclusão (`single-001`: datas convertidas de UTC; `single-018`: "registrei seu
   orçamento", que a plataforma grava como fato de memória). O juiz não decide aprovação: é opinião
   de modelo, não rótulo humano.
-* **Tokens por turno subiram 13,5%** (7011 → 7959): regra 4a no prompt e respostas mais longas
+* **Tokens por turno subiram 13,5%** (7011 → 7959; 8588 na 3ª rodada): regra 4a no prompt e respostas mais longas
   em consulta de status (oferecer em vez de prometer). Custo do eval inteiro +US$ 0,05.
 
 O que continua valendo: dataset e agente da mesma família (Claude); as expectativas de conteúdo

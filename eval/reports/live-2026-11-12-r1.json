@@ -1,0 +1,206 @@
+{
+  "summary": {
+    "mode": "live",
+    "database": "POC_test",
+    "scored_cases": 28,
+    "skipped_requires_llm": 0,
+    "resolution_rate": 0.9643,
+    "tool_calls_per_turn": 0.964,
+    "tokens_per_turn": 8319.5,
+    "degraded_turns": 0,
+    "cache_hits": 1,
+    "cache_leaks": 0,
+    "answer_flagged_turns": 1,
+    "content_failures": 1,
+    "latency_p50_ms": 14029.0,
+    "latency_p95_ms": 26109.3,
+    "llm_calls": 53,
+    "cost_complete": true,
+    "estimated_cost_usd": 0.46819266,
+    "known_cost_usd": 0.46819266,
+    "embedding_classifiers": {
+      "turn_classifier": {
+        "personal": false,
+        "score": 0.7044,
+        "threshold": 0.7162,
+        "nearest": "me sugira algo dentro do meu limite de preço",
+        "latency_ms": 718,
+        "error": false,
+        "embedding_path_live": true
+      }
+    },
+    "synthetic": true,
+    "limitation": "Frases escritas por um modelo da MESMA família que o agente avaliado (Claude). Isso infla a taxa de resolução: o dataset tende a fazer perguntas que este agente sabe responder. Não mede satisfação do cliente, não mede qualidade redacional da resposta e não cobre português regional/erros de digitação reais.",
+    "routing_accuracy": null,
+    "routing_note": "Agente único: não há roteamento para medir (ver eval/FORMAT.md).",
+    "judge": {
+      "model": "gpt-4.1",
+      "judged": 28,
+      "errors": 0,
+      "judge_ok_rate": 0.4286,
+      "disagreements_with_eval": [
+        "single-001",
+        "single-002",
+        "single-003",
+        "single-004",
+        "single-006",
+        "single-007",
+        "single-008",
+        "single-014",
+        "single-016",
+        "single-017",
+        "single-018",
+        "single-019",
+        "single-020",
+        "single-022",
+        "single-023"
+      ],
+      "note": "juiz de outra família (não-Claude); opinião de modelo, não rótulo humano"
+    }
+  },
+  "rows": [
+    {
+      "id": "single-001",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-002",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-003",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-004",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-005",
+      "passed": false,
+      "failures": [
+        "resposta_sem_respaldo:promessa_sem_escrita"
+      ]
+    },
+    {
+      "id": "single-006",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-007",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-008",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-009",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-010",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-011",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-012",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-013",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-014",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-015",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-016",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-017",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-018",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-019",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-020",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-021",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-022",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-023",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-024",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-025",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-026",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-027",
+      "passed": true,
+      "failures": []
+    },
+    {
+      "id": "single-028",
+      "passed": true,
+      "failures": []
+    }
+  ],
+  "provenance": "1ª rodada v2 de 2026-11-12 (antes do contexto de fatos do juiz). O JSON completo foi sobrescrito pela 2ª rodada; este arquivo é reconstruído do log da execução: summary integral e veredito por caso, sem métricas por linha."
+}

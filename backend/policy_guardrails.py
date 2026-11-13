@@ -486,14 +486,15 @@ async def check_output(text: str, user_key: str, session_id: str,
 
 
 async def log_answer_flags(answer: str, flags: list[dict], user_key: str, session_id: str,
-                           area: str = "default") -> None:
+                           area: str = "default", action: str = "flag") -> None:
     """Audita uma resposta apontada por `answer_checks` (ação ou prazo sem respaldo).
 
     Não bloqueia: é evidência de governança, consultável como o resto do log.
-    O texto é mascarado pela política da área antes de gravar."""
+    `action="rewrite"` grava o texto ORIGINAL do modelo, antes da promessa virar
+    oferta (ADR-014). O texto é mascarado pela política da área antes de gravar."""
     try:
         masked = await mask_pii(answer, area)
-        await _log("output", masked, "flag", flags, user_key, session_id, area)
+        await _log("output", masked, action, flags, user_key, session_id, area)
     except Exception:  # noqa: BLE001 — auditoria nunca derruba o turno
         logger.warning("falha ao auditar answer_checks (best-effort)")
 

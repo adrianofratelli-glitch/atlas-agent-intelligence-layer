@@ -775,6 +775,12 @@ function FeatureFlags({ run }) {
     guardClass = 'warn';
     guardTitle = '🛡️ Guardrails · PII mascarada';
     guardDetail = 'Dado sensível removido da resposta antes de enviar ao cliente.';
+  } else if (gOut?.answer_rewrites?.length) {
+    // Promessa sem escrita reescrita como oferta (backend/answer_checks.py, ADR-014).
+    guardClass = 'warn';
+    guardTitle = '🛡️ Guardrails · promessa virou oferta';
+    const r = gOut.answer_rewrites[0];
+    guardDetail = `O modelo escreveu "${r.before}" sem escrita no pedido neste turno; o cliente recebeu "${r.after}" (original auditado em guardrail_events).`;
   } else if (gOut?.answer_checks?.length) {
     // Fidelidade da resposta (backend/answer_checks.py): não bloqueia, avisa.
     guardClass = 'warn';

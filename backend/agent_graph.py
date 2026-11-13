@@ -375,6 +375,44 @@ async def _memory_relevance(user_msg: str, personal_turn: bool) -> dict | None:
         return None
 
 
+async def _answer_fidelity(ctx: dict, trace: list, metrics: dict, guard_out: dict,
+                           final_answer: str, *, grounding: str, user_key: str,
+                           conversation_id: str, area: str) -> str:
+    """Fidelidade da resposta, depois da máscara de PII. Devolve o texto a ENTREGAR.
+
+    Ação afirmada sem escrita vira OFERTA antes de chegar ao cliente (ADR-014; o texto
+    do modelo continua no evento `reasoning` do trace e na auditoria). O que sobrar
+    (prazo sem fonte) é apontado e não bloqueia. Preenche `guard_out["answer_rewrites"]`
+    e `guard_out["answer_checks"]` (este já sobre o texto entregue)."""
+    writes_ok = metrics.get("order_writes_ok", 0)
+    rewrites: list[dict] = []
+    if answer_checks.rewrite_enabled():
+        original_answer = final_answer
+        final_answer, rewrites = answer_checks.rewrite_unbacked(final_answer, writes_ok=writes_ok)
+        if rewrites:
+            metrics["answer_rewrites"] = len(rewrites)
+            observability.metrics.bump("answer_rewrites", len(rewrites))
+            _emit(ctx, trace, "act", "guardrail", actor="guardrail", stage="output",
+                  action="rewrite", violations=rewrites,
+                  result="Ação afirmada sem escrita no turno reescrita como oferta "
+                         "(o cliente não recebe promessa falsa; original auditado).")
+            await guardrails.log_answer_flags(original_answer, rewrites, user_key,
+                                              conversation_id, area, action="rewrite")
+    guard_out["answer_rewrites"] = rewrites
+    answer_flags = answer_checks.check(final_answer, writes_ok=writes_ok, grounding=grounding)
+    guard_out["answer_checks"] = answer_flags
+    if answer_flags:
+        metrics["answer_flags"] = len(answer_flags)
+        observability.metrics.bump("answer_flags", len(answer_flags))
+        _emit(ctx, trace, "act", "guardrail", actor="guardrail", stage="output",
+              action="flag", violations=answer_flags,
+              result="Resposta afirma ação ou prazo sem respaldo no turno "
+                     "(não bloqueia; auditado em guardrail_events).")
+        await guardrails.log_answer_flags(final_answer, answer_flags, user_key,
+                                          conversation_id, area)
+    return final_answer
+
+
 async def n_run_pipeline(state: TurnState, config) -> dict:
     """Caminho completo: memória longa + histórico + tools + orçamento em
     paralelo, monta o prompt, roda o loop de ferramentas (com extração de
@@ -506,21 +544,12 @@ async def n_run_pipeline(state: TurnState, config) -> dict:
               action="mask", violations=guard_out["violations"],
               result="PII mascarada na resposta antes de enviar ao cliente.")
 
-    # Fidelidade da resposta (não bloqueia): ação afirmada sem escrita, prazo sem fonte.
+    # Fidelidade da resposta (ADR-014): promessa sem escrita vira oferta; prazo sem fonte é apontado.
     grounding_text = "\n".join([system_static, system_dynamic, user_msg, *tool_texts,
                                  *(str(h.get("content", "")) for h in (history or []))])
-    answer_flags = answer_checks.check(
-        final_answer, writes_ok=metrics.get("order_writes_ok", 0), grounding=grounding_text)
-    guard_out["answer_checks"] = answer_flags
-    if answer_flags:
-        metrics["answer_flags"] = len(answer_flags)
-        observability.metrics.bump("answer_flags", len(answer_flags))
-        _emit(ctx, trace, "act", "guardrail", actor="guardrail", stage="output",
-              action="flag", violations=answer_flags,
-              result="Resposta afirma ação ou prazo sem respaldo no turno "
-                     "(não bloqueia; auditado em guardrail_events).")
-        await guardrails.log_answer_flags(final_answer, answer_flags, user_key,
-                                          conversation_id, state["area"])
+    final_answer = await _answer_fidelity(
+        ctx, trace, metrics, guard_out, final_answer, grounding=grounding_text,
+        user_key=user_key, conversation_id=conversation_id, area=state["area"])
 
     turn_count = await agent._store_short_term(conversation_id, user_key, user_msg,
                                                 final_answer, emit_fn, metrics)
@@ -721,7 +750,7 @@ async def run_turn(session, *, scenario, user_msg, conversation_id, user_key,
             "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0,
             "memory_extractor_input_tokens": 0, "memory_extractor_output_tokens": 0,
             "memory_extraction_skipped": False,
-            "order_writes_ok": 0, "answer_flags": 0,
+            "order_writes_ok": 0, "answer_flags": 0, "answer_rewrites": 0,
             "context_budget": {
                 "history_chars": agent.MAX_HISTORY_CHARS,
                 "memory_chars": memory.MAX_PROMPT_MEMORY_CHARS,

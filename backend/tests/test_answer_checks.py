@@ -6,6 +6,7 @@ Casos reais vieram dos turnos de 2026-11-12 no `POC_test` (Grove, Sonnet 4.5).
 import os
 import sys
 import unittest
+import unittest.mock
 from pathlib import Path
 
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-for-import-only")
@@ -18,7 +19,8 @@ STATUS_ANSWER = ("Encontrei o seu pedido PED-1003. Status atual: Em trânsito. V
                  "urgente para investigar o que aconteceu com a transportadora. Você deve receber um "
                  "retorno do nosso time de logística em até 24 horas úteis no e-mail cadastrado.")
 GROUNDING = ("Regras da área: prazo padrão de entrega até 10 dias úteis capitais, até 15 dias úteis "
-             "interior. Resultado: {order_id: PED-1003, status: em_transito}")
+             "interior. Resultado: {order_id: PED-1003, status: em_transito} "
+             "Cadeia: {path: [PED-1005, PED-1006, PED-1007], replacements: 2}")
 
 
 def rules(flags):
@@ -39,7 +41,7 @@ class UnbackedCommitmentTests(unittest.TestCase):
                      "Solicitei o reembolso do pedido PED-1002.", "Encaminhei o caso para a qualidade.",
                      "ACABEI DE ABRIR UM CHAMADO.", "Atualizei o status do seu pedido."):
             with self.subTest(text=text):
-                self.assertEqual(rules(ac.check(text, writes_ok=0, grounding="")),
+                self.assertEqual(rules(ac.check(text, writes_ok=0, grounding="PED-1002")),
                                  ["promessa_sem_escrita"])
 
     def test_offers_and_existing_state_are_not_claims(self):
@@ -86,8 +88,155 @@ class DeadlineTests(unittest.TestCase):
         self.assertEqual(len(ac.check(text, writes_ok=0, grounding="")), 1)
 
 
-if __name__ == "__main__":
-    unittest.main()
+class NegationTests(unittest.TestCase):
+    def test_honest_negative_report_is_not_a_claim(self):
+        for text in ("Não abri nenhum chamado ainda.", "Ainda não registrei a troca.",
+                     "Eu nunca encaminhei esse caso."):
+            with self.subTest(text=text):
+                self.assertEqual(ac.check(text, writes_ok=0, grounding=""), [])
+
+
+# Resposta real do `single-005` (rodada 3 de 2026-11-12): a regra 4b fez o agente
+# terminar com a oferta, mas a promessa continuou na frase anterior.
+SINGLE_005 = ("O pedido PED-1005 já teve **2 reposições** (PED-1006 e PED-1007), todas com o mesmo "
+              "defeito. Vou encaminhar seu caso para análise de qualidade, porque trocar de novo o "
+              "mesmo item tende a repetir o problema. Posso abrir esse chamado de análise de "
+              "qualidade para você agora?")
+
+
+class RewriteTests(unittest.TestCase):
+    """ADR-014: promessa sem escrita vira oferta antes de chegar ao cliente."""
+
+    def test_real_single_005_answer_becomes_an_offer_and_keeps_the_facts(self):
+        text, changes = ac.rewrite_unbacked(SINGLE_005, writes_ok=0)
+        self.assertEqual(len(changes), 1)
+        self.assertIn("Se você quiser, posso encaminhar seu caso para análise de qualidade", text)
+        self.assertNotIn("Vou encaminhar", text)
+        self.assertIn("**2 reposições**", text, "o resto da resposta fica intacto")
+        self.assertIn("Posso abrir esse chamado", text)
+        self.assertEqual(ac.check(text, writes_ok=0, grounding=GROUNDING), [], "a resposta entregue passa")
+        self.assertEqual(changes[0]["action"], "rewrite")
+        self.assertIn("Vou encaminhar", changes[0]["before"])
+
+    def test_status_answer_keeps_the_deadline_flag(self):
+        text, changes = ac.rewrite_unbacked(STATUS_ANSWER, writes_ok=0)
+        self.assertEqual(len(changes), 1)
+        self.assertIn("Se você quiser, posso abrir um chamado urgente", text)
+        self.assertEqual(rules(ac.check(text, writes_ok=0, grounding=GROUNDING)), ["prazo_sem_fonte"],
+                         "prazo inventado não é reescrito: segue apontado")
+
+    def test_tenses_accents_markup_and_mid_sentence(self):
+        cases = {
+            "Já abri o chamado para você.": "Se você quiser, posso abrir o chamado para você.",
+            "JÁ ABRI o chamado.": "Se você quiser, posso abrir o chamado.",
+            "Registrei a sua solicitação de troca.": "Se você quiser, posso registrar a sua solicitação de troca.",
+            "Entendo, e eu vou encaminhar seu caso.": "Entendo, e se você quiser, posso encaminhar seu caso.",
+            "- **Acabei de abrir** um chamado.": "- **Se você quiser, posso abrir** um chamado.",
+            "Registrei a troca e vou abrir um chamado.":
+                "Se você quiser, posso registrar a troca e posso abrir um chamado.",
+        }
+        for before, after in cases.items():
+            with self.subTest(text=before):
+                text, changes = ac.rewrite_unbacked(before, writes_ok=0)
+                self.assertEqual(text, after)
+                self.assertTrue(changes)
+                self.assertEqual(ac.check(text, writes_ok=0, grounding=""), [])
+
+    def test_nothing_changes_when_the_write_ran_or_there_is_no_claim(self):
+        self.assertEqual(ac.rewrite_unbacked(SINGLE_005, writes_ok=1), (SINGLE_005, []))
+        for text in ("Posso abrir um chamado para você?", "Não abri nenhum chamado.",
+                     "O status do pedido é em trânsito.\n\nPosso ajudar em algo mais?", ""):
+            with self.subTest(text=text):
+                self.assertEqual(ac.rewrite_unbacked(text, writes_ok=0), (text, []))
+
+    def test_line_breaks_and_other_sentences_are_preserved(self):
+        text = "Status: em trânsito.\n\nVou abrir um chamado.\n- item"
+        out, _ = ac.rewrite_unbacked(text, writes_ok=0)
+        self.assertEqual(out, "Status: em trânsito.\n\nSe você quiser, posso abrir um chamado.\n- item")
+
+    def test_revert_flag(self):
+        with unittest.mock.patch.dict(os.environ, {"ANSWER_REWRITE": "0"}):
+            self.assertFalse(ac.rewrite_enabled())
+        with unittest.mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("ANSWER_REWRITE", None)
+            self.assertTrue(ac.rewrite_enabled())
+
+
+class UngroundedOrderTests(unittest.TestCase):
+    """`pedido_sem_fonte`: número de pedido que o modelo não viu em lugar nenhum."""
+
+    # Resposta real do `single-009` na rodada de base de 2026-11-13 (0 ferramentas no turno).
+    INVENTED = ("Vejo que você tem alguns pedidos conosco:\n- **PED-2001** – Fone Bluetooth Premium\n"
+                "- **PED-2002** – Mouse Ergonômico Wireless\n- **PED-2002** de novo")
+
+    def test_invented_orders_are_flagged_once_each(self):
+        flags = ac.check(self.INVENTED, writes_ok=0, grounding="prompt com PED-0000 de exemplo")
+        self.assertEqual([(f["rule"], f["detail"]) for f in flags],
+                         [("pedido_sem_fonte", "PED-2001"), ("pedido_sem_fonte", "PED-2002")])
+
+    def test_orders_from_message_tool_result_or_denial_hint_are_grounded(self):
+        grounding = "Onde está o ped-1003?\nPedidos disponíveis: PED-1001 (Tour One), PED-1004"
+        self.assertEqual(ac.check("O PED-1003 está em trânsito; o PED-1001 e o PED-1004 também.",
+                                  writes_ok=0, grounding=grounding), [])
+
+
+class MemoryNoteTests(unittest.TestCase):
+    def test_session_note_points_to_the_real_database(self):
+        """Achado de 2026-11-13: a nota citava `POC.agent_sessions` fixo; no banco de teste a
+        leitura era negada e o agente inventava o resumo da conversa (`single-022`)."""
+        import agent
+        note = agent._memory_note("conv_x")
+        self.assertIn(f"{agent.DB_MAIN}.agent_sessions", note)
+        self.assertIn(f'database "{agent.DB_MAIN}"', note)
+        self.assertEqual(agent.SESSIONS_TARGET, f"{agent.DB_MAIN}.agent_sessions")
+        self.assertIn("acabou de começar", note)
+
+
+class TurnWiringTests(unittest.TestCase):
+    """agent_graph._answer_fidelity: o cliente recebe a oferta; trace e auditoria ficam com o original."""
+
+    def _run(self, answer, writes_ok=0, env=None):
+        import asyncio
+        import agent_graph
+
+        logged = []
+
+        async def fake_log(text, flags, user_key, session_id, area="default", action="flag"):
+            logged.append((action, text, [f["rule"] for f in flags]))
+
+        trace, metrics, guard_out = [], {"order_writes_ok": writes_ok}, {}
+        with unittest.mock.patch.object(agent_graph.guardrails, "log_answer_flags", fake_log), \
+                unittest.mock.patch.dict(os.environ, env or {}):
+            out = asyncio.run(agent_graph._answer_fidelity(
+                {}, trace, metrics, guard_out, answer, grounding=GROUNDING,
+                user_key="cliente-demo", conversation_id="c1", area="default"))
+        return out, trace, metrics, guard_out, logged
+
+    def test_promise_is_rewritten_and_audited_with_the_original(self):
+        out, trace, metrics, guard_out, logged = self._run(SINGLE_005)
+        self.assertNotIn("Vou encaminhar", out)
+        self.assertEqual(guard_out["answer_checks"], [])
+        self.assertEqual(len(guard_out["answer_rewrites"]), 1)
+        self.assertEqual(metrics["answer_rewrites"], 1)
+        self.assertEqual([e["action"] for e in trace], ["rewrite"])
+        self.assertEqual(logged[0][0], "rewrite")
+        self.assertIn("Vou encaminhar", logged[0][1], "auditoria guarda o texto do modelo")
+
+    def test_deadline_still_flagged_after_rewrite(self):
+        out, trace, _, guard_out, logged = self._run(STATUS_ANSWER)
+        self.assertEqual([e["action"] for e in trace], ["rewrite", "flag"])
+        self.assertEqual([f["rule"] for f in guard_out["answer_checks"]], ["prazo_sem_fonte"])
+        self.assertEqual([a for a, _, _ in logged], ["rewrite", "flag"])
+
+    def test_revert_flag_only_points(self):
+        out, trace, _, guard_out, _ = self._run(SINGLE_005, env={"ANSWER_REWRITE": "0"})
+        self.assertEqual(out, SINGLE_005)
+        self.assertEqual(guard_out["answer_rewrites"], [])
+        self.assertEqual([f["rule"] for f in guard_out["answer_checks"]], ["promessa_sem_escrita"])
+
+    def test_write_in_the_turn_leaves_the_answer_alone(self):
+        out, trace, _, guard_out, logged = self._run(SINGLE_005, writes_ok=1)
+        self.assertEqual((out, trace, logged), (SINGLE_005, [], []))
 
 
 class EvalAnswerFailureTests(unittest.TestCase):
@@ -146,3 +295,7 @@ class WriteTookEffectTests(unittest.TestCase):
         for text, expected in cases.items():
             with self.subTest(text=text):
                 self.assertIs(agent.write_took_effect(text), expected)
+
+
+if __name__ == "__main__":
+    unittest.main()

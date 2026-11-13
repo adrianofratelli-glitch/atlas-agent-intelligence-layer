@@ -778,9 +778,13 @@ function FeatureFlags({ run }) {
   } else if (gOut?.answer_rewrites?.length) {
     // Promessa sem escrita reescrita como oferta (backend/answer_checks.py, ADR-014).
     guardClass = 'warn';
-    guardTitle = '🛡️ Guardrails · promessa virou oferta';
     const r = gOut.answer_rewrites[0];
-    guardDetail = `O modelo escreveu "${r.before}" sem escrita no pedido neste turno; o cliente recebeu "${r.after}" (original auditado em guardrail_events).`;
+    guardTitle = r.rule === 'pedido_sem_fonte'
+      ? '🛡️ Guardrails · pedido inventado removido'
+      : '🛡️ Guardrails · promessa virou oferta';
+    guardDetail = r.rule === 'pedido_sem_fonte'
+      ? `Pedido(s) citado(s) sem fonte no turno (${r.before}) saíram da resposta; entrou a lista real do cliente (original auditado em guardrail_events).`
+      : `O modelo escreveu "${r.before}" sem escrita no pedido neste turno; o cliente recebeu "${r.after}" (original auditado em guardrail_events).`;
   } else if (gOut?.answer_checks?.length) {
     // Fidelidade da resposta (backend/answer_checks.py): não bloqueia, avisa.
     guardClass = 'warn';

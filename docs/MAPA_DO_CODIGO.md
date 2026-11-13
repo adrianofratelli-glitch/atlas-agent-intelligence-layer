@@ -20,7 +20,7 @@ backend/                      API FastAPI + o agente (Python)
   graph.py                    Pipeline $graphLookup da cadeia de trocas de pedido
   turn_classifier.py          Decide se o turno é "pessoal" (usa memória/não entra no cache) via $vectorSearch em turn_probes
   search_readiness.py         list_search_indexes: busca vazia só vale com índice consultável (ADR-013)
-  answer_checks.py            Fidelidade da resposta: ação afirmada sem escrita, prazo sem fonte (não bloqueia)
+  answer_checks.py            Fidelidade da resposta: promessa sem escrita vira oferta (ADR-014); prazo/pedido sem fonte apontados
   web_search.py               Ferramenta externa web_search (Tavily): cota, cache e auditoria no Atlas
   guidance.py                 Textos de orientação quando a busca volta vazia, escrita é negada ou o assunto é fora de escopo
   profiles.py                 Usuário -> área; perfis de área (persona) em ai_brain.area_profiles
@@ -199,7 +199,7 @@ Backend (unittest, sem servidor): `cd backend && .venv/bin/python -m unittest di
 | `test_guardrail_dilution_adversarial.py`, `test_hardening_adversarial.py` | Casos adversariais do guardrail e do endurecimento |
 | `test_turn_classifier.py`, `test_calibration.py` | Classificador de turno e calibração |
 | `test_search_readiness.py` | Vazio de busca com índice ausente/em construção: denylist, cache, memória, caos `index_empty` (ADR-013) |
-| `test_answer_checks.py` | `answer_checks` e as reprovações por conteúdo do eval |
+| `test_answer_checks.py` | `answer_checks` (reescrita, negação, `pedido_sem_fonte`, ligação no turno) e as reprovações por conteúdo do eval |
 | `test_web_search.py` | Ferramenta web_search (cota, cache) |
 | `test_seed_indexes.py`, `test_qe_profile.py` | Índices do seed e Queryable Encryption |
 | `test_chaos.py`, `test_chaos_isolation.py`, `test_gateway.py`, `test_observability.py` | Resiliência, gateway, métricas |

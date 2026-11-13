@@ -1,4 +1,4 @@
-# Eval do agente único e comparativo single vs multi (22/09/2026; rodada v2 em 12/11/2026)
+# Eval do agente único e comparativo single vs multi (22/09/2026; v2 em 12/11/2026; correções em 13/11/2026)
 
 Formato, campos e métricas: [`eval/FORMAT.md`](../eval/FORMAT.md) — espelho do
 `../atlas-multi-agent-coordination/eval/FORMAT.md`, com as diferenças listadas lá (não há roteamento
@@ -83,6 +83,83 @@ Leitura:
 
 O que continua valendo: dataset e agente da mesma família (Claude); as expectativas de conteúdo
 vêm do seed, não de rótulo humano; o juiz reduz o viés de família, não o elimina.
+
+## Rodadas de 13/11/2026: correção determinística e revisão do juiz
+
+Relatórios com transcrição (`--transcripts`): pergunta, fatos dados ao juiz e resposta entregue em
+`eval/reports/live-2026-11-13-base.json` (antes das mudanças) e `live-2026-11-13-final{1,2,3}.json`.
+
+```bash
+cd backend && .venv/bin/python eval_agent.py --live --judge gpt-4.1 --transcripts \
+  --json ../eval/reports/live-2026-11-13-final1.json
+```
+
+| Rodada | Resolução | Reprovados | Reescritas | Juiz `gpt-4.1` | p50 / p95 | Custo |
+|---|---|---|---|---|---|---|
+| base (código de 12/11) | 96,4% (27/28) | `single-005`: falso positivo da checagem | não existia | 18/28 (64,3%) | 14,0 s / 27,3 s | US$ 0,454 |
+| intermediária 1 (prompt + nota de memória + negação) | 100% (28/28) | nenhum | 0 | 23/27 (85,2%) | 13,2 s / 26,4 s | US$ 0,462 |
+| intermediária 2 | 96,4% (27/28) | `single-009`: `pedido_sem_fonte` (4 pedidos inventados) | 0 | 22/28 (78,6%) | 12,8 s / 26,9 s | US$ 0,462 |
+| **final 1** | **100% (28/28)** | nenhum | 0 | 23/28 (82,1%) | 12,9 s / 26,1 s | US$ 0,472 |
+| **final 2** | **100% (28/28)** | nenhum | 1 (`single-028`, pedido inventado) | 22/28 (78,6%) | 12,9 s / 27,0 s | US$ 0,471 |
+| **final 3** | **100% (28/28)** | nenhum | 0 | 22/28 (78,6%) | 12,5 s / 25,2 s | US$ 0,442 |
+
+Todas com `cost_complete`, 0 turnos degradados e 0 vazamentos de cache. As finais rodaram sobre a
+reescrita de promessa e de pedido sem fonte. Depois da final 2, o texto que substitui o pedido
+inventado mudou: a lista real do cliente deu lugar ao pedido do número (ADR-014, item 4). A mudança
+não afeta a aprovação, porque nenhuma das duas versões deixa pedido sem fonte. Ela foi conferida em
+6 turnos avulsos (3× `single-028`, 3× `single-009`): nenhuma reescrita foi necessária, e um número
+citado como exemplo ("exemplo: PED-1234") não é mais tratado como inventado.
+
+O que mudou e por quê:
+
+* **`single-005` (promessa sem escrita).** Nas rodadas de 12/11 a causa era a promessa real ("Vou
+  encaminhar seu caso"). Na base de 13/11 foi um **falso positivo**: "**não** vou processar uma nova
+  troca" casou com o verbo. A negação agora não conta, e a promessa, quando aparece, é reescrita como
+  oferta antes da entrega (ADR-014). Nas três finais o caso passou sem reescrita: o modelo terminou
+  oferecendo ("Posso encaminhar agora para a equipe de qualidade…?").
+* **`single-022` (resumo da conversa), defeito de núcleo.** A nota de memória citava
+  `POC.agent_sessions` como literal. Em qualquer banco que não seja `POC`, a leitura era negada e o
+  agente **inventava** o resumo ("você pediu reembolso do PED-1002…" numa conversa nova). O eval
+  aprovava. Agora a nota cita o banco real, e o agente responde "esta conversa acabou de começar".
+* **`single-009` (pedido inventado).** Numa pergunta fora de escopo, sem ferramenta, o agente listou
+  pedidos e produtos que o cliente não tem ("PED-8901 – Fone Bluetooth Premium…"). Aconteceu na base
+  e na intermediária 2, mesmo com a regra 7b revista. A checagem nova `pedido_sem_fonte` reprova o
+  caso, e a reescrita tira o trecho e pede o número do pedido. Na final 2 o mesmo apareceu em
+  `single-028`, e o caso passou pela reescrita (`answer_rewritten_turns: 1`).
+
+### Discordâncias do juiz (três finais: 16 casos-rodada) e na base (9)
+
+O juiz é segunda opinião; o gabarito não foi alterado para casar com resposta nenhuma.
+
+| Caso | Rodadas | Classe | Leitura |
+|---|---|---|---|
+| `single-002` | final 1, final 3 | **erro do agente** | inventa processo: "a troca foi aprovada", "a logística vai agendar a coleta", "priorizaremos o envio". Na final 1 também erra a conta: diz "ainda dentro do prazo" para os 30 dias contados de 06/06, com hoje em 13/11 |
+| `single-003` | base | **erro do agente** | "creditado na mesma forma de pagamento" não está nas regras; aparece em 6 de 7 rodadas, mesmo com a frase nova da regra 4a |
+| `single-004` | base, 3 finais | **erro do agente** + falta de contexto do juiz | "você terá 30 dias para devolver após a reposição" (política inventada; ausente nas finais). Os itens de catálogo vêm do `$vectorSearch`, que o juiz não vê |
+| `single-009`, `single-022` | base | **erro do agente** (corrigido) | pedido e conversa inventados; o juiz acertou e o eval antigo aprovava |
+| `single-005` | finais 2 e 3 | erro do juiz | lê a OFERTA ("Posso encaminhar…?") como ação afirmada |
+| `single-016` | final 2 | erro do juiz | a regra 3 da logística (20 dias úteis sem movimentação) está satisfeita: 4 meses desde o despacho |
+| `single-015` | final 1 | erro do juiz | a lista de pedidos da Marina vem da orientação da plataforma depois da busca vazia, que o juiz não vê |
+| `single-008` | final 3 | erro do juiz | a busca web é ligada por área em `tool_registry`; o juiz entende que o agente não podia buscar |
+| `single-018` | final 2 | erro do juiz | "orçamento já registrado" é verdadeiro: o fato está na memória longa mostrada ao juiz |
+| `single-001`, `single-023` | base, finais 1 e 3 | ambiguidade de rubrica | data e meses estão corretos. "Possível extravio" é inferência sem regra na área de suporte, e a rubrica não diz se inferir assim é infiel |
+| `single-006` | todas | ambiguidade de dado | o FAQ semeado diz "desde que em perfeitas condições" e é servido do cache para "troca de produto com defeito". A resposta é a entrada validada; o juiz tem razão no mérito |
+| `single-028` | final 2 | (corrigido depois) | a reescrita pôs a lista real do cliente num pedido de listagem ampla; agora pede o número |
+
+Leitura:
+
+* **O juiz subiu de 64% para 79–82%.** Parte disso veio de correções no agente: conversa e pedido
+  inventados, falso positivo e promessa. Parte veio de dar ao juiz o que o agente via: cadeia de
+  trocas, memória longa, data e fontes web. Isso eliminou os "sem evidência" de 12/11 em
+  `single-003`/`019`/`023`.
+* **Erro do agente que fica:** condição de política e processo inventados nas respostas que escrevem
+  (`single-002`/`003`), mais a conta de prazo. A frase nova da regra 4a não resolveu: "mesma forma de
+  pagamento" apareceu em 6 de 7 rodadas. Isso não é heurística de frase segura, e por isso não há
+  reescrita. Ver "O que fica" no plano da fase 3 (vault): o prazo de troca calculado no servidor seria
+  determinístico, mas muda o fluxo da demo. Hoje todos os pedidos semeados foram entregues há mais de
+  30 dias.
+* **Propostas que dependem de decisão humana (não aplicadas):** texto do FAQ semeado do `single-006`;
+  rubrica do juiz sobre inferência ("possível extravio") e sobre oferta × ação.
 
 ## Resultado desta PoV (rodada de 22/09/2026)
 

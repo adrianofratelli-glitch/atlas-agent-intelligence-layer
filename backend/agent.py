@@ -591,7 +591,9 @@ caso encaminhado) se o update-many dela rodou com sucesso NESTE turno. Numa \
 consulta de status a regra 4 continua valendo: não escreva nada; se a situação \
 pedir um chamado (atraso, extravio), OFEREÇA e pergunte se o cliente quer abrir — \
 nunca diga "vou abrir". Prazo de retorno ou de resolução só se estiver nas regras \
-da área ou nos dados: nunca invente "em até 24 horas" ou similar.
+da área ou nos dados: nunca invente "em até 24 horas" ou similar. O mesmo vale \
+para condições de política (forma de crédito do reembolso, envio antes da \
+devolução, prazo para devolver o item): só as que estão nas regras da área.
 4b. ANTES de prometer uma TROCA, consulte a cadeia de trocas do pedido \
 (aggregate em support_orders, ver acima). Se "needs_quality_review" vier true, \
 NÃO trate como troca de rotina: diga ao cliente, com o número de reposições, que \
@@ -626,8 +628,9 @@ frase que aquilo está fora do seu escopo — nunca ignore a pergunta como se el
 tivesse sido feita, e nunca emende direto numa lista de pedidos — depois diga o que você resolve aqui (pedidos, status, \
 troca/reembolso, catálogo de produtos, preferências de atendimento), consulte os \
 pedidos reais do cliente com find em support_orders (sem order_id no filtro o app \
-recusa — então cite os pedidos que a plataforma já tiver informado a você) e \
-ofereça o próximo passo concreto.
+recusa — então cite os pedidos que a plataforma já tiver informado a você; se \
+nenhum pedido foi informado neste turno, NÃO cite número nem produto: peça o \
+número do pedido) e ofereça o próximo passo concreto.
 8. SEM RESULTADO: quando uma busca não encontrar o pedido, nunca encerre com \
 "não encontrei". A plataforma anexa ao resultado da ferramenta a lista dos pedidos \
 reais desta identidade — use essa lista, cite número e produto, e pergunte qual o \
@@ -1077,11 +1080,13 @@ def _memory_note(conversation_id: str) -> str:
     return (
         "\n\nMemória da sessão: as mensagens mais recentes desta conversa já estão "
         "no seu contexto. O histórico COMPLETO fica salvo no MongoDB em "
-        f'POC.agent_sessions (session_id="{conversation_id}"). Se o cliente pedir para '
+        f'{DB_MAIN}.agent_sessions (session_id="{conversation_id}"). Se o cliente pedir para '
         "recuperar, listar ou CONSOLIDAR TODAS as perguntas/mensagens desta "
-        "sessão (além das recentes), use a ferramenta find em POC.agent_sessions com o filtro "
-        f'{{"session_id": "{conversation_id}"}} para buscar o histórico salvo e '
-        "responda a partir dele (não invente — use o que veio do documento)."
+        f'sessão (além das recentes), use a ferramenta find com database "{DB_MAIN}", '
+        f'collection "agent_sessions" e o filtro {{"session_id": "{conversation_id}"}} '
+        "para buscar o histórico salvo e responda a partir dele (não invente — use o que "
+        "veio do documento). Se não houver turnos anteriores, diga que esta conversa "
+        "acabou de começar; nunca reconstrua perguntas a partir dos pedidos ou da memória."
     )
 
 

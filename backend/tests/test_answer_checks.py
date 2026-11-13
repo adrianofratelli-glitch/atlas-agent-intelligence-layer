@@ -142,6 +142,23 @@ class RewriteTests(unittest.TestCase):
                 self.assertTrue(changes)
                 self.assertEqual(ac.check(text, writes_ok=0, grounding=""), [])
 
+    def test_mixed_negated_and_affirmative_rewrites_only_the_affirmative(self):
+        """Revisão de 2026-11-13: a 1ª ocorrência do verbo era a negada."""
+        cases = {
+            "Não vou abrir um chamado agora, mas vou abrir a troca para você.":
+                "Não vou abrir um chamado agora, mas se você quiser, posso abrir a troca para você.",
+            "Eu não vou abrir chamado; já registrei a troca.":
+                "Eu não vou abrir chamado; se você quiser, posso registrar a troca.",
+            "Nunca encaminhei o caso, e não vou encaminhar o caso sem você pedir.":
+                "Nunca encaminhei o caso, e não vou encaminhar o caso sem você pedir.",
+        }
+        for before, after in cases.items():
+            with self.subTest(text=before):
+                text, _ = ac.rewrite_unbacked(before, writes_ok=0)
+                self.assertEqual(text, after)
+                self.assertNotIn("Não se", text)
+                self.assertEqual(ac.check(text, writes_ok=0, grounding=""), [])
+
     def test_nothing_changes_when_the_write_ran_or_there_is_no_claim(self):
         self.assertEqual(ac.rewrite_unbacked(SINGLE_005, writes_ok=1), (SINGLE_005, []))
         for text in ("Posso abrir um chamado para você?", "Não abri nenhum chamado.",
@@ -225,6 +242,10 @@ class DropUngroundedOrderTests(unittest.TestCase):
                 self.assertEqual(ac.check(text, writes_ok=0, grounding=""), [])
                 self.assertEqual(ac.drop_ungrounded_orders(text, grounding="", replacement="R"),
                                  (text, []))
+
+    def test_example_window_stays_in_the_same_sentence(self):
+        flags = ac.check("Use o formato certo. Você tem o PED-9999 em aberto.", writes_ok=0, grounding="")
+        self.assertEqual([f["detail"] for f in flags], ["PED-9999"])
 
     def test_nothing_invented_nothing_changes(self):
         self.assertEqual(ac.drop_ungrounded_orders("O PED-1003 chegou.", grounding="ped-1003",

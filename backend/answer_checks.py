@@ -123,7 +123,21 @@ _LEADING_MARKUP_RE = re.compile(r"^[\s*_>#\-•\d.)]*$")
 def _verb_pattern(folded_verb: str) -> re.Pattern:
     """Verbo dobrado -> regex no texto ORIGINAL (acento e caixa livres; "eu" opcional)."""
     words = [("j[aá]" if w == "ja" else re.escape(w)) for w in folded_verb.split()]
-    return re.compile(r"\b(?:eu\s+)?" + r"\s+".join(words) + r"\b", re.IGNORECASE)
+    return re.compile(r"\b(?:eu\s+)?(?P<v>" + r"\s+".join(words) + r")\b", re.IGNORECASE)
+
+
+def _affirmative_hits(sentence: str, verb: str):
+    """Ocorrências do verbo no texto ORIGINAL que são promessa: sem "não/nunca" antes e com
+    objeto de pedido depois (a mesma regra de `_claims`, aplicada ocorrência a ocorrência).
+
+    Achado da revisão (2026-11-13): pegar só a 1ª ocorrência reescrevia a negada —
+    "Não vou abrir um chamado agora, mas vou abrir a troca" virava "Não se você quiser…"."""
+    for hit in _verb_pattern(verb).finditer(sentence):
+        before = fold(sentence[max(0, hit.start() - 16):hit.start()])
+        if before and _NEGATION_BEFORE_RE.search(before + " "):
+            continue
+        if _ACTION_RE.match(fold(sentence[hit.start("v"):])):
+            yield hit
 
 
 def _rewrite_sentence(sentence: str, *, again: bool = False) -> tuple[str, str | None]:
@@ -132,7 +146,7 @@ def _rewrite_sentence(sentence: str, *, again: bool = False) -> tuple[str, str |
     `again`: a frase já ganhou um "se você quiser"; a 2ª ação vira só "posso <verbo>"."""
     for m in _claims(fold(sentence)):
         verb = m.group("verb")
-        hit = _verb_pattern(verb).search(sentence)
+        hit = next(_affirmative_hits(sentence, verb), None)
         if not hit:     # dobra mudou o texto de um jeito que o padrão não acha: não arrisca
             return sentence, None
         at_start = bool(_LEADING_MARKUP_RE.match(sentence[:hit.start()]))
@@ -183,6 +197,7 @@ _ORDER_ID_RE = re.compile(r"\bPED-\d{3,6}\b", re.IGNORECASE)
 # Número citado como EXEMPLO de formato ("me envie o número (ex.: PED-0001, PED-0002)")
 # não afirma que o pedido existe. Medido em 2026-11-13 (`single-028`): tratá-lo como
 # inventado cortava a frase de pedido do número e deixava marcação solta na resposta.
+_SENTENCE_BREAK_RE = re.compile(r"[.!?]\s+(?=[A-ZÀ-Ý*])|\n")
 _EXAMPLE_BEFORE_RE = re.compile(r"\b(?:ex|exemplo|formato|como por exemplo|tipo)\b")
 
 
@@ -190,7 +205,13 @@ def _order_mentions(text: str) -> list[str]:
     """`PED-…` citados como pedido (exclui os que vêm logo depois de "ex.", "formato"…)."""
     out = []
     for m in _ORDER_ID_RE.finditer(text or ""):
-        if _EXAMPLE_BEFORE_RE.search(fold(text[max(0, m.start() - 30):m.start()])):
+        window = text[max(0, m.start() - 30):m.start()]
+        # só a MESMA frase: "Use o formato certo. Você tem o PED-9999" não é exemplo.
+        # O corte exige espaço + maiúscula depois do ponto, para "(ex.: PED-0001" ficar inteiro.
+        cuts = list(_SENTENCE_BREAK_RE.finditer(window))
+        if cuts:
+            window = window[cuts[-1].end():]
+        if _EXAMPLE_BEFORE_RE.search(fold(window)):
             continue
         out.append(m.group(0).upper())
     return out
@@ -227,8 +248,9 @@ def drop_ungrounded_orders(answer: str, *, grounding: str,
     "PED-8901 – Fone Bluetooth Premium". O prompt não elimina; a plataforma corrige,
     como na promessa (ADR-014). Item de lista com pedido inventado sai inteiro; em
     texto corrido sai a frase. A linha que só apresentava a lista ("você possui 4
-    pedidos:") sai junto quando todos os itens dela saíram. `replacement` (a lista
-    REAL, vinda do banco pelo dono) entra onde estava o primeiro trecho removido.
+    pedidos:") sai junto quando todos os itens dela saíram. `replacement` (no turno,
+    `agent_graph.ORDER_FALLBACK_TEXT`: o pedido do número, nunca uma lista) entra onde
+    estava o primeiro trecho removido.
     Devolve (texto, ids removidos); sem pedido inventado, o texto volta igual."""
     source = {m.upper() for m in _ORDER_ID_RE.findall(grounding or "")}
 

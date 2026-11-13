@@ -48,7 +48,10 @@ está listado em **Diferenças** — nada de silencioso.
 | `notes` | não | por que a expectativa é essa |
 
 Desde a v2 (2026-11-12) o caso também reprova por `answer_checks` do próprio turno
-(`resposta_sem_respaldo:promessa_sem_escrita` / `:prazo_sem_fonte`, ver `backend/answer_checks.py`).
+(`resposta_sem_respaldo:promessa_sem_escrita` / `:prazo_sem_fonte` / `:pedido_sem_fonte`, ver
+`backend/answer_checks.py`). Desde 2026-11-13 a promessa sem escrita é reescrita como oferta no próprio
+turno (ADR-014): o caso julga a resposta ENTREGUE, e `answer_rewrites` (por caso) e
+`answer_rewritten_turns` (resumo) mostram quantas vezes o modelo ainda escreveu a promessa.
 Antes de cada rodada `--live`, os pedidos do banco de teste voltam ao seed (`--keep-orders` desliga),
 porque as expectativas de conteúdo dependem do status de partida.
 
@@ -68,6 +71,9 @@ saem da MESMA família de modelo (Claude); isso está em `limitation` e é repet
 * **Conteúdo da resposta** — `content_failures` (casos reprovados por conteúdo, escrita ou
   `answer_checks`) e `answer_flagged_turns`. Com `--judge <modelo>`, `summary.judge` traz a taxa
   de aprovação de um juiz de OUTRA família (GPT via Grove) e os casos em que ele discorda do eval.
+  O juiz recebe os fatos do turno montados pelo eval (regras da área, pedidos citados, cadeia de trocas,
+  escritas, memória longa ativa, data de hoje, fontes web), não os resultados de ferramenta, que o trace
+  não guarda. `--transcripts` grava pergunta, fatos e resposta entregue por caso no `--json`.
   O juiz não decide `passed`: é opinião de modelo, não rótulo humano.
 * **Isolamento de cache/memória** — `cache_leaks`: turnos pessoais que leram ou gravaram o cache
   compartilhado. Qualquer valor > 0 é falha, não estatística.

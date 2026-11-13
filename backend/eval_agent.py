@@ -17,7 +17,9 @@ Antes da rodada, os pedidos do banco de teste voltam ao estado do seed
 Desde 2026-11-12 o eval julga a RESPOSTA, não só a rota: `answer_checks` (ação
 afirmada sem escrita, prazo sem fonte) e as expectativas de conteúdo do caso
 (`expect_answer_any`, `forbid_answer_any`, `expect_write`, `expect_no_write`)
-reprovam o caso. `--judge <modelo>` soma a opinião de um juiz de OUTRA família
+reprovam o caso. Desde 2026-11-13 a promessa sem escrita é reescrita como oferta no
+próprio turno (ADR-014): o caso julga a resposta ENTREGUE, e `answer_rewritten_turns`
+conta quantas vezes o modelo ainda escreveu a promessa. `--judge <modelo>` soma a opinião de um juiz de OUTRA família
 (GPT via Grove, `chat/completions`), relatada à parte: não decide aprovação,
 porque um modelo julgando não é rótulo humano.
 """
@@ -140,6 +142,11 @@ async def score_live(case: dict, session) -> dict:
             "cache_hit": bool(cache.get("hit")), "cache_leak": cache_leak,
             "blocked": blocked, "answer_chars": len(answer),
             "answer_flags": [f.get("rule") for f in checks],
+            # promessa reescrita como oferta (ADR-014): o caso pode passar, mas a conta
+            # fica visível; o eval não esconde que o modelo ainda escreveu a promessa
+            "answer_rewrites": [{"before": r.get("before"), "after": r.get("after")}
+                                for r in ((result.get("guardrail") or {}).get("output") or {})
+                                .get("answer_rewrites") or []],
             "order_writes_ok": int(metrics.get("order_writes_ok", 0)),
             # para o juiz: a pergunta, o que as ferramentas devolveram e a resposta
             "_judge_input": {"message": case["message"], "answer": answer,
@@ -178,9 +185,13 @@ async def judge_context(case: dict, result: dict, metrics: dict, limit: int = 40
     (2026-11-12) reprovou 16/28 por "sem evidência" de fatos que estavam no banco ou nas
     regras da área. Aqui entram: regras da área (`area_profiles.persona`), FAQ servida do
     cache, os pedidos citados na mensagem (projeção sem PII, só do dono; estado DEPOIS do
-    turno), escritas bem-sucedidas e fatos de memória gravados pela plataforma.
+    turno), escritas bem-sucedidas e fatos de memória gravados pela plataforma. Desde
+    2026-11-13 também: a cadeia de trocas (mesmo pipeline do servidor), os fatos ativos
+    da memória longa, a data de hoje e as fontes da busca web. As 9 discordâncias da
+    rodada de base eram, em sua maioria, o juiz sem esses dados (`docs/eval-report.md`).
     """
     import agent
+    import graph
     import profiles
     from db import poc
 
@@ -202,17 +213,45 @@ async def judge_context(case: dict, result: dict, metrics: dict, limit: int = 40
                                                       "owner_user_key": 1})
         if not doc:
             parts.append(f"PEDIDO {order_id}: não existe.")
-        elif doc.pop("owner_user_key", None) != case["user_key"]:
+            continue
+        owner = doc.pop("owner_user_key", None)
+        if owner != case["user_key"]:
             parts.append(f"PEDIDO {order_id}: pertence a OUTRO cliente (não pode ser exposto).")
+            doc = None
         else:
             parts.append(f"PEDIDO {order_id} (estado depois do turno): "
                          f"{json.dumps(doc, ensure_ascii=False, default=str)}")
+        if doc:
+            # a cadeia de trocas, pelo MESMO pipeline do servidor (dono amarrado)
+            try:
+                cursor = await poc()["support_orders"].aggregate(
+                    graph.build_order_chain_pipeline(order_id, case["user_key"]))
+                rows = await cursor.to_list(1)
+                if rows and rows[0].get("chain"):
+                    parts.append(f"CADEIA DE TROCAS DE {order_id} (sinais do servidor): "
+                                 f"{json.dumps(graph.summarize_order_chain(rows[0]), ensure_ascii=False)}")
+            except Exception:  # noqa: BLE001 — contexto parcial ainda serve ao juiz
+                pass
     parts.append(f"ESCRITAS BEM-SUCEDIDAS EM PEDIDOS NESTE TURNO: {int(metrics.get('order_writes_ok', 0))}")
     new_facts = (result.get("memory") or {}).get("new_facts") or []
     parts.append("A PLATAFORMA grava preferências do cliente na memória de longo prazo "
                  f"automaticamente; fatos gravados neste turno: {len(new_facts)}")
+    try:
+        facts = await poc()["agent_memory"].find(
+            {"user_key": case["user_key"], "active": True}, {"_id": 0, "fact": 1}).to_list(20)
+        if facts:
+            parts.append("MEMÓRIA DE LONGO PRAZO DO CLIENTE (fatos ativos que o agente vê): "
+                         + "; ".join(f["fact"] for f in facts if f.get("fact")))
+    except Exception:  # noqa: BLE001
+        pass
+    parts.append(f"DATA DE HOJE (o agente recebe no contexto): {agent.today_label()}")
     if metrics.get("web_searches"):
         parts.append(f"BUSCA WEB executada neste turno: {metrics['web_searches']} vez(es)")
+        sources = [src for ev in result.get("trace") or [] if ev.get("kind") == "tool_call"
+                   for src in ((ev.get("args") or {}).get("sources") or [])]
+        if sources:
+            parts.append("FONTES DA BUSCA WEB (o conteúdo não é guardado no trace): "
+                         + ", ".join(sources[:5]))
     return "\n".join(parts)[:limit]
 
 
@@ -315,6 +354,7 @@ def summarize(rows: list[dict], data: dict, *, mode: str, database: str,
         "cache_hits": sum(r["cache_hit"] for r in rows),
         "cache_leaks": sum(r["cache_leak"] for r in rows),
         "answer_flagged_turns": sum(bool(r.get("answer_flags")) for r in rows),
+        "answer_rewritten_turns": sum(bool(r.get("answer_rewrites")) for r in rows),
         "content_failures": sum(any(f.startswith(("conteudo_", "sem_escrita", "escrita_indevida",
                                                    "resposta_sem_respaldo"))
                                     for f in r.get("failures", [])) for r in rows),
@@ -420,7 +460,11 @@ async def run(args) -> int:
     if args.live and args.judge:
         summary["judge"] = await judge_rows(rows, args.judge)
     for row in rows:
-        row.pop("_judge_input", None)
+        transcript = row.pop("_judge_input", None)
+        if args.transcripts and transcript:
+            # pergunta, fatos do turno montados pelo eval e resposta entregue (já sem PII):
+            # é o que a revisão humana das discordâncias do juiz precisa ler
+            row["transcript"] = transcript
     report = {"summary": summary, "rows": rows}
     print(json.dumps(report["summary"], indent=2, ensure_ascii=False))
     if args.json:
@@ -438,6 +482,8 @@ def main() -> int:
     parser.add_argument("--json", help="grava {summary, rows} neste arquivo")
     parser.add_argument("--compare", help="imprime o delta contra um relatório anterior")
     parser.add_argument("--judge", help="modelo juiz de outra família via Grove (ex.: gpt-4.1); só com --live")
+    parser.add_argument("--transcripts", action="store_true",
+                        help="grava pergunta, fatos do turno e resposta de cada caso no --json")
     parser.add_argument("--keep-orders", action="store_true",
                         help="não restaura os pedidos do banco de teste ao seed antes da rodada")
     return asyncio.run(run(parser.parse_args()))

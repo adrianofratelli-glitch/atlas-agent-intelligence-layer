@@ -146,6 +146,8 @@ async def aggregate_list(coll, pipeline, *, length: int, **kwargs) -> list[dict]
 
         ops = "+".join(next(iter(st)) for st in pipeline if isinstance(st, dict) and st)
         await chaos.hook("aggregate", name=ops)
+        if chaos.index_empty_armed(ops):
+            return []   # índice ausente/em construção: vazio SEM erro (ADR-013)
     cursor = await coll.aggregate(pipeline, **kwargs)
     return await cursor.to_list(length=length)
 

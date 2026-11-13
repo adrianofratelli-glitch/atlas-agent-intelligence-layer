@@ -13,10 +13,11 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test")
 import turn_classifier as tc  # noqa: E402
 
 
-def classify_with(agg_result=None, agg_error=None, threshold=0.72):
+def classify_with(agg_result=None, agg_error=None, threshold=0.72, index_ready=True):
     agg = AsyncMock(side_effect=agg_error) if agg_error else AsyncMock(return_value=agg_result)
     with patch.object(tc, "get_threshold", AsyncMock(return_value=threshold)), \
          patch.object(tc, "aggregate_list", agg), \
+         patch.object(tc.search_readiness, "queryable", AsyncMock(return_value=index_ready)), \
          patch.object(tc, "ai_brain", lambda: {tc.PROBES_COLLECTION: object()}):
         return asyncio.run(tc.classify("como você me chama?"))
 
@@ -39,6 +40,16 @@ class TurnClassifierTests(unittest.TestCase):
         out = classify_with([])
         self.assertFalse(out["personal"])
         self.assertEqual(out["score"], 0.0)
+
+    def test_empty_from_index_not_queryable_fails_closed(self):
+        # ADR-013: índice ausente/em construção devolve [] sem erro. Sem conferir o
+        # índice, o vazio virava "não pessoal" e o turno pessoal ia para o cache.
+        for state in (False, None):
+            with self.subTest(index_ready=state):
+                out = classify_with([], index_ready=state)
+                self.assertTrue(out["personal"])
+                self.assertTrue(out["error"])
+                self.assertEqual(out["reason"], "index_not_queryable")
 
     def test_search_failure_fails_closed(self):
         out = classify_with(agg_error=RuntimeError("índice fora do ar"))

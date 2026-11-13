@@ -35,6 +35,7 @@ from datetime import datetime, timezone
 from anthropic import AsyncAnthropic
 from bson import ObjectId
 
+import search_readiness
 from db import (MAX_TIME_MS, aggregate_list, ai_brain, get_client, poc, safe_query,
                 tenant_vector_stage)
 
@@ -524,6 +525,19 @@ def _cap_failed(name: str, exc: BaseException) -> str:
     return _capabilities.record_failure(name, exc)
 
 
+async def _index_states() -> dict[str, bool | None]:
+    """Estado dos dois índices da memória (cache curto em `search_readiness`).
+
+    Índice ausente/em construção devolve lista VAZIA sem erro (ADR-013): dentro do
+    `$rankFusion` a perna muda some calada e o trace diria "rank_fusion". False =
+    fora (a perna sai do caminho); None = não deu para saber (segue como antes).
+    """
+    coll = poc()[MEMORY_COLLECTION]
+    vs, bm = await asyncio.gather(search_readiness.queryable(coll, MEMORY_INDEX),
+                                  search_readiness.queryable(coll, BM25_INDEX))
+    return {"vector": vs, "bm25": bm}
+
+
 async def load_relevant(user_key: str, query: str, *, strategy: str | None = None) -> dict:
     """The facts RELEVANT to this turn — retrieval HÍBRIDO pré-filtrado, UM round-trip de busca.
 
@@ -572,8 +586,23 @@ async def load_relevant(user_key: str, query: str, *, strategy: str | None = Non
                  "config_warnings": warnings[:5], "fallbacks": []}
     started = asyncio.get_running_loop().time()
     docs, mode = None, None
+    states = await _index_states()
+    down = [leg for leg, ok in states.items() if ok is False]
+    if down:
+        retrieval["fallbacks"].append(
+            "índice não consultável: " + ", ".join(
+                {"vector": MEMORY_INDEX, "bm25": BM25_INDEX}[leg] for leg in down))
     try:
-        server_ok = _ar is not None and strategy != "app_rrf" and _cap_usable("rank_fusion")
+        if len(down) == 2:
+            raise LookupError("nenhum índice da memória consultável")
+        if down:
+            # Uma perna fora: a outra sozinha, com o nome verdadeiro do caminho.
+            if down == ["bm25"]:
+                docs, mode = (await _vector_candidates(user_key, query, fusion))[:RELEVANT_LIMIT], "vector"
+            else:
+                docs, mode = (await _bm25_candidates(user_key, query, fusion))[:RELEVANT_LIMIT], "lexical"
+        server_ok = (not down and _ar is not None and strategy != "app_rrf"
+                     and _cap_usable("rank_fusion"))
         if server_ok:
             if want_rerank and _cap_usable("rerank"):
                 try:
@@ -597,7 +626,7 @@ async def load_relevant(user_key: str, query: str, *, strategy: str | None = Non
                     kind = _cap_failed("rank_fusion", exc)
                     retrieval["fallbacks"].append(f"rank_fusion {kind}: {type(exc).__name__}")
                     docs = None
-        elif _ar is not None and strategy != "app_rrf":
+        elif not down and _ar is not None and strategy != "app_rrf":
             retrieval["fallbacks"].append("rank_fusion: indisponível (cache de capability)")
         if docs is None:
             docs, mode, why = await _fused_app(user_key, query, fusion)

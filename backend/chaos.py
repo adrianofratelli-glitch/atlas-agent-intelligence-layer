@@ -10,7 +10,8 @@ os casos, no mesmo processo):
 
     CHAOS=1                liga
     CHAOS_SCENARIO         timeout | hang | status | not_primary | search_down |
-                           stage_rejected | index_building | max_time | none
+                           stage_rejected | index_building | index_empty | max_time | none
+    CHAOS_INDEX            (index_empty) "<collection>:<índice>" que fica não pronto ("" = todos)
     CHAOS_TARGET           substring casada contra "<ponto>:<nome>" ("" = todos;
                            "a|b" = qualquer alternativa)
     CHAOS_PHASE            fase exigida ("" = qualquer): before_first_token,
@@ -150,3 +151,30 @@ def mangle(point: str, name: str, value):
     if not _armed(point, name, ""):
         return value
     return os.getenv("CHAOS_MALFORMED_PAYLOAD", "{{{ não é json ]]]")
+
+
+def index_empty_armed(name: str) -> bool:
+    """Cenário `index_empty`: o comportamento REAL de índice ausente/em construção.
+
+    Medido em 2026-11-12: `$vectorSearch`/`$search` contra índice que não existe
+    devolve lista vazia, SEM exceção. `index_building` (exceção) continua para o
+    caso de mongot fora; este simula o vazio silencioso, e `index_readiness`
+    responde "não pronto" para o mesmo alvo (ADR-013).
+    """
+    if os.getenv("CHAOS_SCENARIO", "").strip().lower() != "index_empty":
+        return False
+    return _armed("aggregate", name, "")
+
+
+def index_readiness(name: str) -> bool | None:
+    """Estado forçado do índice em `index_empty`: False se o alvo casa, senão None (real).
+
+    `name` = "<collection>:<índice>"; casado contra CHAOS_INDEX ("" = todos,
+    "a|b" = alternativas). Não consome CHAOS_COUNT.
+    """
+    if not enabled() or os.getenv("CHAOS_SCENARIO", "").strip().lower() != "index_empty":
+        return None
+    target = os.getenv("CHAOS_INDEX", "").strip()
+    if target and not any(t and t in name for t in target.split("|")):
+        return None
+    return False

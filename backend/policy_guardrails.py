@@ -33,6 +33,7 @@ import os
 import re
 from datetime import datetime, timezone
 
+import search_readiness
 from db import MAX_TIME_MS, aggregate_list, ai_brain, poc, safe_query, tenant_vector_stage
 
 logger = logging.getLogger("poc.guardrails")
@@ -214,6 +215,13 @@ async def _denylist_top(text: str, area: str) -> tuple[float, dict] | None:
             logger.warning("denylist semântico indisponível (área=%s): %s", area, exc)
             return None
     if not docs:
+        # Índice ausente ou em construção devolve lista vazia SEM erro (medido em
+        # 2026-11-12). Só é "nenhuma frase parecida" se o índice está consultável;
+        # senão a camada está indisponível e o fail mode da área decide (ADR-013).
+        if not await search_readiness.empty_is_trustworthy(coll, DENYLIST_INDEX):
+            logger.warning("denylist semântico sem índice consultável (área=%s): "
+                           "lista vazia tratada como camada indisponível", area)
+            return None
         return 0.0, {}
     return round(float(docs[0].get("score", 0)), 4), docs[0]
 
@@ -475,6 +483,19 @@ async def check_output(text: str, user_key: str, session_id: str,
         # loga a versão mascarada — nunca a resposta com a PII em claro
         await _log("output", masked, action, violations, user_key, session_id, area)
     return {"text": masked, "masked": bool(fired), "action": action, "violations": violations}
+
+
+async def log_answer_flags(answer: str, flags: list[dict], user_key: str, session_id: str,
+                           area: str = "default") -> None:
+    """Audita uma resposta apontada por `answer_checks` (ação ou prazo sem respaldo).
+
+    Não bloqueia: é evidência de governança, consultável como o resto do log.
+    O texto é mascarado pela política da área antes de gravar."""
+    try:
+        masked = await mask_pii(answer, area)
+        await _log("output", masked, "flag", flags, user_key, session_id, area)
+    except Exception:  # noqa: BLE001 — auditoria nunca derruba o turno
+        logger.warning("falha ao auditar answer_checks (best-effort)")
 
 
 async def _log(stage: str, text: str, action: str, violations: list[dict],

@@ -28,6 +28,7 @@ import time
 import asyncio
 from datetime import datetime, timedelta, timezone
 
+import search_readiness
 from db import MAX_TIME_MS, aggregate_list, ai_brain, poc, safe_query, tenant_vector_stage
 
 CACHE_COLLECTION = "semantic_cache"
@@ -96,7 +97,9 @@ async def lookup(question: str, area: str = "default",
     never replayed to Suporte, and the top candidate is always a valid one no
     matter how large the cache grows. `mode` is "vector" (filtered search),
     "vector-postfilter" (index without the filter field yet — filtered app-side)
-    or "exact" (index missing → normalized-text match). A miss still returns the
+    or "exact" (index missing → normalized-text match), or "unavailable" (the
+    vector search came back empty WITHOUT error and `list_search_indexes` says the
+    index is not queryable — ADR-013; exact match still tried). A miss still returns the
     top candidate's score, so the UI can show "how close" it was.
     """
     coll = poc()[CACHE_COLLECTION]
@@ -141,6 +144,11 @@ async def lookup(question: str, area: str = "default",
             docs = await _exact_fallback(coll, question, area)
             mode = "exact"
 
+    if not docs and mode != "exact" and await search_readiness.queryable(coll, CACHE_INDEX) is False:
+        # Índice ausente/em construção devolve vazio sem erro: o MISS seria falso
+        # (ADR-013). Segue pelo match exato e o trace diz que o vetor estava fora.
+        docs = await _exact_or_empty()
+        mode = "unavailable"
     latency_ms = int((time.perf_counter() - t0) * 1000)
     if not docs:
         return {"hit": False, "score": 0.0, "threshold": threshold,

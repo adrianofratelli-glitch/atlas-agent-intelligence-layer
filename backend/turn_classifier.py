@@ -21,6 +21,7 @@ pessoal (sem cache); custa uma chamada ao LLM, nunca um vazamento.
 
 import time
 
+import search_readiness
 from db import MAX_TIME_MS, ai_brain, aggregate_list, safe_query
 
 PROBES_COLLECTION = "turn_probes"
@@ -114,6 +115,13 @@ async def classify(text: str) -> dict:
         return {"personal": True, "score": 0.0, "threshold": threshold,
                 "latency_ms": round((time.perf_counter() - started) * 1000),
                 "error": True}
+    if not docs and not await search_readiness.empty_is_trustworthy(
+            ai_brain()[PROBES_COLLECTION], PROBES_INDEX):
+        # Índice de probes ausente/em construção devolve vazio sem erro: sem isto o
+        # score 0 virava "não pessoal" — o contrário do fail-closed (ADR-013).
+        return {"personal": True, "score": 0.0, "threshold": threshold,
+                "latency_ms": round((time.perf_counter() - started) * 1000),
+                "error": True, "reason": "index_not_queryable"}
     score = float(docs[0]["score"]) if docs else 0.0
     return {"personal": score >= threshold, "score": round(score, 4),
             "threshold": threshold, "nearest": docs[0]["phrase"] if docs else None,
